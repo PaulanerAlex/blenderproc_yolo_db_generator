@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# BlenderProc
+blenderproc_resources/
+.blenderproc/
+
+# Project specific
+output/
+models/*.obj
+models/*.mtl
+models/*.png
+models/*.jpg
+models/**/*.mtl
+models/**/*.obj
+models/**
+!models/.gitkeep
+models_cache/
+
+# CC0 Textures (large dataset)
+cc0_textures/
+textures/
+
+# Temporary files
+*.tmp
+*.log
+*.hdf5
+*.h5
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# System files
+Thumbs.db

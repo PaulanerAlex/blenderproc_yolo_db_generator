@@ -1,0 +1,33 @@
+[project]
+name = "blender-yolo-generator"
+version = "0.1.0"
+description = "Framework for generating YOLO training datasets using Blender and BlenderProc"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "blenderproc>=2.5.0",
+    "numpy>=1.21.0",
+    "opencv-python>=4.5.0",
+    "h5py>=3.7.0",
+    "PyYAML>=6.0",
+    "Pillow>=9.0.0",
+    "matplotlib>=3.5.0",
+    "tqdm>=4.64.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

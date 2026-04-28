@@ -1,0 +1,88 @@
+{
+  "seed": {
+    "numpy": 42,
+    "blenderproc": "123"
+  },
+  
+  "models_path": "./models",
+  "cc_textures_path": "./cc0_textures",
+  
+  "camera": {
+    "px": 600,
+    "py": 600,
+    "u0": 320,
+    "v0": 240,
+    "width": 640,
+    "height": 480,
+    "randomize_params_percent": 5.0
+  },
+  
+  "rendering": {
+    "max_samples": 32,
+    "denoiser": "OPTIX"
+  },
+  
+  "scene": {
+    "room_size_multiplier_min": 5.0,
+    "room_size_multiplier_max": 10.0,
+    "simulate_physics": false,
+    "max_textures": 50,
+    
+    "distractors": {
+      "min_count": 20,
+      "max_count": 50,
+      "min_size_rel_scene": 0.05,
+      "max_size_rel_scene": 0.1,
+      "custom_distractors_path": null,
+      "custom_distractor_prob": 0.5,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.5,
+      "emissive_prob": 0.0,
+      "emissive_strength_min": 2.0,
+      "emissive_strength_max": 5.0
+    },
+    
+    "lights": {
+      "min_count": 3,
+      "max_count": 6,
+      "min_intensity": 50,
+      "max_intensity": 200
+    },
+    
+    "objects": {
+      "min_count": 2,
+      "max_count": 5,
+      "multiple_occurrences": true,
+      "scale_noise": 0.2,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.3,
+      "cam_min_dist_rel": 1.0,
+      "cam_max_dist_rel": 3.0
+    }
+  },
+  
+  "dataset": {
+    "num_scenes": 100,
+    "scenes_per_run": 1,
+    "images_per_scene": 10,
+    "empty_images_per_scene": 2,
+    "train_split": 0.7,
+    "val_split": 0.2,
+    "test_split": 0.1
+  },
+  
+  "output": {
+    "save_path": "./output/my_dataset",
+    "yolo_format": "yolov11",
+    "save_depth": false,
+    "save_normals": false,
+    "save_segmentation": false,
+    "save_pose": false,
+    
+    "detection_params": {
+      "min_bbox_side_px": 10,
+      "min_visibility": 0.3,
+      "occlusion_samples": 100
+    }
+  }
+}

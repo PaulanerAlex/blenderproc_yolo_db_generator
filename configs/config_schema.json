@@ -1,0 +1,398 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Blender YOLO Dataset Generator Configuration",
+  "description": "Configuration schema for generating YOLO training datasets with BlenderProc",
+  "type": "object",
+  "required": ["models_path", "output", "dataset"],
+  "properties": {
+    "seed": {
+      "type": "object",
+      "description": "Random seeds for reproducibility",
+      "properties": {
+        "numpy": {
+          "type": "integer",
+          "description": "Seed for NumPy random functions"
+        },
+        "blenderproc": {
+          "type": "string",
+          "description": "Seed for BlenderProc"
+        }
+      }
+    },
+    "models_path": {
+      "type": "string",
+      "description": "Path to directory containing 3D models. Each subdirectory represents one class."
+    },
+    "cc_textures_path": {
+      "type": "string",
+      "description": "Path to CC0 textures directory (downloaded via blenderproc download cc_textures)"
+    },
+    "camera": {
+      "type": "object",
+      "description": "Camera intrinsic parameters",
+      "properties": {
+        "px": {
+          "type": "number",
+          "description": "Focal length in pixels (x-axis)",
+          "default": 600
+        },
+        "py": {
+          "type": "number",
+          "description": "Focal length in pixels (y-axis)",
+          "default": 600
+        },
+        "u0": {
+          "type": "number",
+          "description": "Principal point x-coordinate",
+          "default": 320
+        },
+        "v0": {
+          "type": "number",
+          "description": "Principal point y-coordinate",
+          "default": 240
+        },
+        "width": {
+          "type": "integer",
+          "description": "Image width in pixels",
+          "minimum": 1,
+          "default": 640
+        },
+        "height": {
+          "type": "integer",
+          "description": "Image height in pixels",
+          "minimum": 1,
+          "default": 480
+        },
+        "randomize_params_percent": {
+          "type": "number",
+          "description": "Percentage to randomize camera parameters (0-100)",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 5.0
+        }
+      },
+      "required": ["px", "py", "u0", "v0", "width", "height"]
+    },
+    "rendering": {
+      "type": "object",
+      "description": "Rendering quality settings",
+      "properties": {
+        "max_samples": {
+          "type": "integer",
+          "description": "Number of rays per pixel (higher = better quality, slower)",
+          "minimum": 1,
+          "default": 32
+        },
+        "denoiser": {
+          "type": ["string", "null"],
+          "enum": [null, "INTEL", "OPTIX", "OPENIMAGEDENOISE"],
+          "description": "Denoiser to use. OPTIX requires compatible Nvidia GPU",
+          "default": "OPTIX"
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "description": "Scene generation parameters",
+      "properties": {
+        "room_size_multiplier_min": {
+          "type": "number",
+          "description": "Minimum room size as factor of largest object",
+          "minimum": 1.0,
+          "default": 5.0
+        },
+        "room_size_multiplier_max": {
+          "type": "number",
+          "description": "Maximum room size as factor of largest object",
+          "minimum": 1.0,
+          "default": 10.0
+        },
+        "simulate_physics": {
+          "type": "boolean",
+          "description": "Enable physics simulation (objects fall to ground)",
+          "default": false
+        },
+        "max_textures": {
+          "type": "integer",
+          "description": "Maximum number of textures to load per run",
+          "minimum": 1,
+          "default": 50
+        },
+        "distractors": {
+          "type": "object",
+          "description": "Distractor objects settings",
+          "properties": {
+            "min_count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 20
+            },
+            "max_count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 50
+            },
+            "min_size_rel_scene": {
+              "type": "number",
+              "description": "Minimum distractor size relative to room size",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.05
+            },
+            "max_size_rel_scene": {
+              "type": "number",
+              "description": "Maximum distractor size relative to room size",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.1
+            },
+            "custom_distractors_path": {
+              "type": ["string", "null"],
+              "description": "Path to custom distractor models directory"
+            },
+            "custom_distractor_prob": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.5
+            },
+            "displacement_max": {
+              "type": "number",
+              "description": "Maximum displacement amount (0 = disabled, warning: slow)",
+              "minimum": 0.0,
+              "default": 0.0
+            },
+            "pbr_noise": {
+              "type": "number",
+              "description": "Noise to add to PBR material properties",
+              "minimum": 0.0,
+              "default": 0.5
+            },
+            "emissive_prob": {
+              "type": "number",
+              "description": "Probability that distractor becomes light source",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.0
+            },
+            "emissive_strength_min": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 2.0
+            },
+            "emissive_strength_max": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 5.0
+            },
+            "texture_blacklist": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of texture folder names to exclude for floor and distractor objects"
+            }
+          }
+        },
+        "lights": {
+          "type": "object",
+          "description": "Lighting settings",
+          "properties": {
+            "min_count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 3
+            },
+            "max_count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 6
+            },
+            "min_intensity": {
+              "type": "number",
+              "minimum": 0,
+              "default": 50
+            },
+            "max_intensity": {
+              "type": "number",
+              "minimum": 0,
+              "default": 200
+            }
+          }
+        },
+        "objects": {
+          "type": "object",
+          "description": "Target object settings",
+          "properties": {
+            "min_count": {
+              "type": "integer",
+              "description": "Minimum number of target objects per scene",
+              "minimum": 1,
+              "default": 2
+            },
+            "max_count": {
+              "type": "integer",
+              "description": "Maximum number of target objects per scene",
+              "minimum": 1,
+              "default": 5
+            },
+            "multiple_occurrences": {
+              "type": "boolean",
+              "description": "Allow same object class multiple times in scene",
+              "default": true
+            },
+            "texture": {
+              "type": "string",
+              "description": "Optional specific texture folder name to use for this object class"
+            },
+            "textures": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of optional texture folder names to randomly sample from for this object class"
+            },
+            "scale_noise": {
+              "type": "number",
+              "description": "Amount of scale randomization (0-1)",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.2
+            },
+            "displacement_max": {
+              "type": "number",
+              "description": "Maximum displacement for geometry variation",
+              "minimum": 0.0,
+              "default": 0.0
+            },
+            "pbr_noise": {
+              "type": "number",
+              "description": "Noise to add to object material properties",
+              "minimum": 0.0,
+              "default": 0.3
+            },
+            "cam_min_dist_rel": {
+              "type": "number",
+              "description": "Minimum camera distance relative to object size",
+              "minimum": 0.1,
+              "default": 1.0
+            },
+            "cam_max_dist_rel": {
+              "type": "number",
+              "description": "Maximum camera distance relative to object size",
+              "minimum": 0.1,
+              "default": 3.0
+            }
+          }
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "description": "Dataset generation and output settings",
+      "required": ["num_scenes", "images_per_scene"],
+      "properties": {
+        "num_scenes": {
+          "type": "integer",
+          "description": "Total number of scenes to generate",
+          "minimum": 1
+        },
+        "scenes_per_run": {
+          "type": "integer",
+          "description": "Number of scenes to generate per BlenderProc run",
+          "minimum": 1,
+          "default": 1
+        },
+        "images_per_scene": {
+          "type": "integer",
+          "description": "Number of images to render per scene",
+          "minimum": 1
+        },
+        "empty_images_per_scene": {
+          "type": "integer",
+          "description": "Number of images without target objects (negative examples)",
+          "minimum": 0,
+          "default": 0
+        },
+        "train_split": {
+          "type": "number",
+          "description": "Fraction of data for training",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.7
+        },
+        "val_split": {
+          "type": "number",
+          "description": "Fraction of data for validation",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.2
+        },
+        "test_split": {
+          "type": "number",
+          "description": "Fraction of data for testing",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.1
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "description": "Output format and paths",
+      "required": ["save_path", "yolo_format"],
+      "properties": {
+        "save_path": {
+          "type": "string",
+          "description": "Path to save generated dataset"
+        },
+        "yolo_format": {
+          "type": "string",
+          "enum": ["yolov11", "yolov26", "yolov11-obb", "yolov26-obb"],
+          "description": "YOLO format: yolov11/yolov26 (standard bbox) or yolov11-obb/yolov26-obb (oriented bbox)"
+        },
+        "save_depth": {
+          "type": "boolean",
+          "description": "Save depth maps",
+          "default": false
+        },
+        "save_normals": {
+          "type": "boolean",
+          "description": "Save surface normals",
+          "default": false
+        },
+        "save_segmentation": {
+          "type": "boolean",
+          "description": "Save segmentation masks",
+          "default": false
+        },
+        "save_pose": {
+          "type": "boolean",
+          "description": "Save 6D object poses",
+          "default": false
+        },
+        "detection_params": {
+          "type": "object",
+          "description": "Object detection annotation parameters",
+          "properties": {
+            "min_bbox_side_px": {
+              "type": "number",
+              "description": "Minimum bounding box side size in pixels",
+              "minimum": 1,
+              "default": 10
+            },
+            "min_visibility": {
+              "type": "number",
+              "description": "Minimum visibility percentage (0-1)",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.3
+            },
+            "occlusion_samples": {
+              "type": "integer",
+              "description": "Number of points to sample for occlusion detection",
+              "minimum": 1,
+              "default": 100
+            }
+          }
+        }
+      }
+    }
+  }
+}

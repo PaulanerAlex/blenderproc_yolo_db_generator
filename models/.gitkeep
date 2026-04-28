@@ -1,0 +1,11 @@
+# Place your 3D model directories here
+# Each subdirectory represents one object class
+#
+# Example structure:
+# models/
+# ├── class_a/
+# │   ├── model.obj
+# │   ├── model.mtl
+# │   └── texture.png
+# └── class_b/
+#     └── model.obj
