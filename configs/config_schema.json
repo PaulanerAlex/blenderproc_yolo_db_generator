@@ -379,10 +379,15 @@
             },
             "min_visibility": {
               "type": "number",
-              "description": "Minimum visibility percentage (0-1)",
+              "description": "Minimum visibility percentage (0-1). Objects with visibility below this due to occlusion will be discarded.",
               "minimum": 0.0,
               "maximum": 1.0,
               "default": 0.3
+            },
+            "force_fully_visible": {
+              "type": "boolean",
+              "description": "If true, objects that are partially outside the image boundaries will be discarded.",
+              "default": false
             },
             "occlusion_samples": {
               "type": "integer",

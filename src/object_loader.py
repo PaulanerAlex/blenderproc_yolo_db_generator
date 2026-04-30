@@ -93,8 +93,8 @@ class ObjectLoader:
             raise ValueError(f"No object class directories found in {self.models_path}")
         
         # Load object configurations from config
-        obj_configs = self.config.get('scene', {}).get('objects', {}).get('class_configs', {})
-        
+        obj_configs = self.config.get('scene', {}).get('objects', {})
+
         # Load each class
         for class_id, class_dir in enumerate(class_dirs):
             obj_files = list(class_dir.glob('*.obj'))
@@ -108,7 +108,7 @@ class ObjectLoader:
             
             # Get class-specific config
             obj_cfg = obj_configs.get(class_dir.name, {})
-            
+
             obj_class = ObjectClass(
                 name=class_dir.name,
                 model_path=str(obj_file),

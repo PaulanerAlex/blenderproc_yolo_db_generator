@@ -301,7 +301,7 @@ class SceneGenerator:
         # Use global blacklist
         available_materials = [m for m in self.cc_materials if m.get_name().replace("CC_", "") not in self.texture_blacklist]
         
-        shapes = ['CUBE', 'SPHERE', 'CYLINDER', 'MONKEY']
+        shapes = ['CUBE', 'SPHERE', 'CYLINDER', 'MONKEY', 'CONE']
         
         for i in range(num_distractors):
             # Random shape

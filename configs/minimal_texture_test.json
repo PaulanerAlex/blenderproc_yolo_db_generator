@@ -50,14 +50,16 @@
     },
     
     "objects": {
-      "min_count": 1,
-      "max_count": 1,
-      "multiple_occurrences": false,
-      "scale_noise": 0.0,
-      "displacement_max": 0.0,
-      "pbr_noise": 0.0,
-      "cam_min_dist_rel": 1.0,
-      "cam_max_dist_rel": 2.0
+      "probe" : {
+        "min_count": 1,
+        "max_count": 1,
+        "multiple_occurrences": false,
+        "scale_noise": 0.0,
+        "displacement_max": 0.0,
+        "pbr_noise": 0.0,
+        "cam_min_dist_rel": 1.0,
+        "cam_max_dist_rel": 2.0
+      }
     }
   },
   

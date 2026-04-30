@@ -146,7 +146,7 @@ class DatasetGenerator:
         # Load and place target objects
         target_objects = []
         obj_sizes = []
-        for obj_class in object_classes:
+        for instance_idx, obj_class in enumerate(object_classes):
             # Load object
             objs = bproc.loader.load_obj(obj_class.model_path)
             
@@ -156,12 +156,13 @@ class DatasetGenerator:
             
             obj = objs[0]
             
-            # Apply category_id *after* joining in case metadata is lost
+            # Apply metadata
             obj.blender_obj["category_id"] = obj_class.class_id
             obj.blender_obj["class_name"] = obj_class.name
             
-            # Set pass_index for segmentation (BlenderProc uses this)
-            obj.blender_obj.pass_index = obj_class.class_id + 1
+            # Set UNIQUE pass_index for segmentation (BlenderProc uses this)
+            # Must be > 0 (0 is background)
+            obj.blender_obj.pass_index = instance_idx + 1
             
             # Get object size
             bbox = obj.get_bound_box()
@@ -176,8 +177,6 @@ class DatasetGenerator:
                 texture_name = np.random.choice(obj_class.textures)
 
             cc_mat = self.scene_generator.cc_materials_dict.get(texture_name) if texture_name else None
-            if texture_name:
-                print(f"    DEBUG: Object {obj.get_name()}, requested texture={texture_name}, mat_found={cc_mat is not None}")
 
             # Apply base color to object ONLY if no CC materials are available AND no texture specified
             if not self.scene_generator.cc_materials and not cc_mat:
@@ -195,7 +194,6 @@ class DatasetGenerator:
         
         # Compute room size based on actual objects
         room_size = self.scene_generator.compute_room_size(obj_sizes)
-        print(f"    DEBUG: Room size: {room_size:.2f}")
         
         # Create room
         room_objects = self.scene_generator.create_room(room_size)
@@ -208,7 +206,6 @@ class DatasetGenerator:
             # Ensure it's above the floor
             z = np.random.uniform(obj_sizes[i]/2 + 0.1, room_size/2)
             obj.set_location([x, y, z])
-            print(f"    DEBUG: Object {i} location: {obj.get_location()}")
         
         # Add distractors
         distractor_config = self.config.get('scene', {}).get('distractors', {})
@@ -268,6 +265,11 @@ class DatasetGenerator:
         # Render
         print(f"  Rendering {num_poses} images...")
         
+        all_objs = bproc.object.get_all_mesh_objects()
+        for obj in all_objs:
+             cat_id = obj.blender_obj.get("category_id")
+             print(f"      - {obj.get_name()}: pass_index={obj.blender_obj.pass_index}, cat_id={cat_id}")
+
         data = bproc.renderer.render()
         
         # Save renders and extract annotations
@@ -288,6 +290,7 @@ class DatasetGenerator:
             bboxes = self.bbox_extractor.extract_from_dict(
                 data,
                 class_mapping,
+                target_objects,
                 img_idx
             )
             print(f"    Extracted {len(bboxes)} bboxes for image {img_idx}")

@@ -7,6 +7,7 @@ and oriented bounding boxes (OBB) from BlenderProc HDF5 output files.
 
 import numpy as np
 import h5py
+import blenderproc as bproc
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
 import cv2
@@ -45,7 +46,7 @@ class BoundingBox:
         return {
             'class_id': self.class_id,
             'class_name': self.class_name,
-            'bbox_2d': self.bbox_2d.tolist() if isinstance(self.bbox_2d, np.ndarray) else self.bbox_2d,
+            'bbox_2d': self.bbox_2d.tolist(),
             'angle': self.angle,
             'visibility': self.visibility,
             'area_px': self.area_px
@@ -66,11 +67,13 @@ class BBoxExtractor:
         self.detection_params = config.get('output', {}).get('detection_params', {})
         self.min_bbox_side = self.detection_params.get('min_bbox_side_px', 10)
         self.min_visibility = self.detection_params.get('min_visibility', 0.3)
+        self.force_fully_visible = self.detection_params.get('force_fully_visible', False)
         self.occlusion_samples = self.detection_params.get('occlusion_samples', 100)
     
     def extract_from_dict(self,
                           data: Dict[str, Any],
                           class_mapping: Dict[int, str],
+                          target_objects: List[bproc.types.MeshObject],
                           image_idx: int = 0) -> List[BoundingBox]:
         """
         Extract bounding boxes from dictionary (output of bproc.renderer.render()).
@@ -78,6 +81,7 @@ class BBoxExtractor:
         Args:
             data: Data dictionary from bproc.renderer.render()
             class_mapping: Mapping from class ID to class name
+            target_objects: List of target MeshObjects in scene
             image_idx: Index of image in data arrays
             
         Returns:
@@ -85,6 +89,7 @@ class BBoxExtractor:
         """
         # Load image (for shape)
         image_shape = data['colors'][image_idx].shape
+        height, width = image_shape[:2]
         
         # Load instance segmentation
         if 'instance_segmaps' in data:
@@ -94,11 +99,10 @@ class BBoxExtractor:
         else:
             return []
             
-        # Load instance attribute maps (contains class IDs)
-        # In memory it might be a list of dicts or similar
-        instance_attrs = data.get('instance_attribute_maps', [None])[image_idx]
-        
         bboxes = []
+        
+        # Create map from pass_index to MeshObject
+        idx_to_obj = {obj.blender_obj.pass_index: obj for obj in target_objects}
         
         # Get unique instance IDs
         unique_instances = np.unique(instance_segmap)
@@ -107,36 +111,63 @@ class BBoxExtractor:
             if instance_id == 0:  # Skip background
                 continue
             
+            # Find the corresponding object
+            obj = idx_to_obj.get(instance_id)
+            if not obj:
+                continue
+                
             # Get mask for this instance
             mask = (instance_segmap == instance_id).astype(np.uint8)
+            visible_pixels = np.sum(mask > 0)
             
-            # Get class ID from instance attributes
-            class_id = None
-            if instance_attrs is not None:
-                # instance_attrs is a list of dictionaries for each instance
-                # The instance_id in the segmap corresponds to the 'idx' in the attributes
-                # Find the attribute dict that matches this instance_id
-                for attr in instance_attrs:
-                    if isinstance(attr, dict) and attr.get('idx') == instance_id:
-                        class_id = attr.get('category_id')
-                        if class_id is None:
-                            class_id = attr.get('class_id')
-                        break
+            if visible_pixels == 0:
+                continue
 
-            if class_id is None:
-                # Fallback: assume instance_id is related to class_id
-                class_id = int(instance_id) - 1
+            # 1. Check if clipped by image boundaries using 3D projection
+            bbox_3d_corners = obj.get_bound_box(local_coords=False)
             
-            # Skip if class not in mapping (None is not in mapping)
-            if class_id is None or class_id not in class_mapping:
+            # Use BlenderProc's built-in projection
+            try:
+                proj_2d = bproc.camera.project_points(bbox_3d_corners, frame=image_idx)
+            except Exception:
                 continue
             
-            # Extract bounding box
+            if proj_2d is None:
+                continue
+                
+            # Check if any projected corner is outside the frame
+            is_clipped = (np.any(proj_2d[:, 0] < -0.5) or np.any(proj_2d[:, 0] >= width - 0.5) or
+                          np.any(proj_2d[:, 1] < -0.5) or np.any(proj_2d[:, 1] >= height - 0.5))
+            
+            if self.force_fully_visible and is_clipped:
+                continue
+
+            # 2. Calculate "True" Visibility
+            # Visibility = (actual visible pixels) / (total pixels if unoccluded)
+            # Area that *should* be in frame (AABB of projected 2D corners, clamped)
+            in_frame_x_min = np.clip(np.min(proj_2d[:, 0]), 0, width)
+            in_frame_x_max = np.clip(np.max(proj_2d[:, 0]), 0, width)
+            in_frame_y_min = np.clip(np.min(proj_2d[:, 1]), 0, height)
+            in_frame_y_max = np.clip(np.max(proj_2d[:, 1]), 0, height)
+            
+            expected_area_in_frame = (in_frame_x_max - in_frame_x_min) * (in_frame_y_max - in_frame_y_min)
+            
+            # Visibility relative to what should be seen in this frame
+            true_visibility = visible_pixels / expected_area_in_frame if expected_area_in_frame > 0 else 0.0
+            
+            # Get class ID
+            class_id = obj.blender_obj.get("category_id")
+            if class_id is None:
+                continue
+            
+            # Extract bounding box from visible pixels
             bbox = self._extract_bbox_from_mask(mask, class_id, class_mapping[class_id], image_shape)
             
+            # Override visibility with our "true" calculation
+            bbox.visibility = true_visibility
+            
             # Filter based on criteria
-            keep = self._should_keep_bbox(bbox)
-            if keep:
+            if self._should_keep_bbox(bbox):
                 bboxes.append(bbox)
         
         return bboxes
@@ -243,6 +274,8 @@ class BBoxExtractor:
         bbox_aabb = np.array([x, y, x + w, y + h])
         
         # Calculate visibility (ratio of actual pixels to bbox area)
+        # The visibility calculated here is the "simple" ratio. 
+        # We will override this in extract_from_dict with true_visibility.
         bbox_area = w * h
         visibility = total_pixels / bbox_area if bbox_area > 0 else 0.0
         
@@ -293,46 +326,6 @@ class BBoxExtractor:
                 return False
         
         return True
-    
-    def extract_3d_bbox_from_object(self,
-                                    obj_pose: np.ndarray,
-                                    obj_bbox_3d: np.ndarray,
-                                    camera_matrix: np.ndarray,
-                                    image_shape: Tuple[int, int]) -> Optional[np.ndarray]:
-        """
-        Project 3D bounding box to 2D.
-        
-        Args:
-            obj_pose: 4x4 object pose matrix
-            obj_bbox_3d: 3D bounding box corners (8x3)
-            camera_matrix: 3x4 camera projection matrix
-            image_shape: (height, width)
-            
-        Returns:
-            2D projected corners or None if behind camera
-        """
-        # Transform bbox to camera space
-        bbox_3d_homogeneous = np.hstack([obj_bbox_3d, np.ones((8, 1))])
-        bbox_camera = (camera_matrix @ bbox_3d_homogeneous.T).T
-        
-        # Check if behind camera
-        if np.any(bbox_camera[:, 2] <= 0):
-            return None
-        
-        # Project to 2D
-        bbox_2d = bbox_camera[:, :2] / bbox_camera[:, 2:3]
-        
-        # Check if within image bounds
-        height, width = image_shape[:2]
-        if np.all(bbox_2d[:, 0] < 0) or np.all(bbox_2d[:, 0] > width) or \
-           np.all(bbox_2d[:, 1] < 0) or np.all(bbox_2d[:, 1] > height):
-            return None
-        
-        # Clip to image bounds
-        bbox_2d[:, 0] = np.clip(bbox_2d[:, 0], 0, width - 1)
-        bbox_2d[:, 1] = np.clip(bbox_2d[:, 1], 0, height - 1)
-        
-        return bbox_2d
     
     def compute_occlusion(self,
                          bbox: BoundingBox,
