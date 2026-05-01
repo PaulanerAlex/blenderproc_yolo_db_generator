@@ -113,19 +113,31 @@ blenderproc/
 ├── README.md              # This file
 ├── requirements.txt       # Python dependencies
 ├── src/                   # Source code
-│   ├── generate_dataset.py    # Main entry point
-│   ├── config_parser.py       # Configuration handling
-│   ├── scene_generator.py     # BlenderProc scene generation
-│   ├── object_loader.py       # 3D model loading
-│   ├── yolo_converter.py      # YOLO format conversion
-│   └── utils.py              # Utility functions
+├── scripts/               # Utility tools and helper scripts
+│   └── visualize_model.py     # 3D model orientation visualizer
 ├── configs/               # Configuration files
-│   └── example_config.json    # Example configuration
 ├── models/                # 3D models (user-provided)
 ├── output/                # Generated datasets
 ├── tests/                 # Test suite
 └── docs/                  # Documentation
 ```
+
+## Utility Tools
+
+### 3D Model Visualizer
+
+Before generating a dataset, it is often useful to check the default orientation of your `.obj` models to determine if they need initial rotation correction.
+
+```bash
+blenderproc run scripts/visualize_model.py models/your_model/model.obj
+```
+
+This tool:
+- Renders the model from 4 standard views: **ISO**, **Front**, **Side**, and **Top**.
+- Draws colored axis indicators: **Red (+X)**, **Green (+Y)**, **Blue (+Z)**.
+- Saves the results to the `model_visualizations/` directory.
+
+Use these images to determine the correct values for the `initial_rotation` property in your configuration.
 
 ## Configuration
 

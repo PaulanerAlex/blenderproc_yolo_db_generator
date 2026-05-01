@@ -118,6 +118,18 @@
           "minimum": 1,
           "default": 50
         },
+        "ambient_strength": {
+          "type": "number",
+          "description": "Strength of global ambient background light (0-1). Prevents pitch-black shadows.",
+          "minimum": 0.0,
+          "maximum": 5.0,
+          "default": 0.5
+        },
+        "debug_initial_state": {
+          "type": "boolean",
+          "description": "If true, saves a debug image of the scene before physics simulation.",
+          "default": false
+        },
         "distractors": {
           "type": "object",
           "description": "Distractor objects settings",
@@ -239,15 +251,6 @@
               "description": "Allow same object class multiple times in scene",
               "default": true
             },
-            "texture": {
-              "type": "string",
-              "description": "Optional specific texture folder name to use for this object class"
-            },
-            "textures": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "List of optional texture folder names to randomly sample from for this object class"
-            },
             "scale_noise": {
               "type": "number",
               "description": "Amount of scale randomization (0-1)",
@@ -278,6 +281,25 @@
               "description": "Maximum camera distance relative to object size",
               "minimum": 0.1,
               "default": 3.0
+            }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "texture": {
+                "type": "string"
+              },
+              "textures": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "initial_rotation": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Initial Euler rotation in degrees [x, y, z] before physics drop"
+              }
             }
           }
         }

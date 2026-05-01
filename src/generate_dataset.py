@@ -156,13 +156,16 @@ class DatasetGenerator:
             
             obj = objs[0]
             
-            # Apply metadata
+            # Apply metadata using direct blender_obj access for persistence
             obj.blender_obj["category_id"] = obj_class.class_id
             obj.blender_obj["class_name"] = obj_class.name
             
             # Set UNIQUE pass_index for segmentation (BlenderProc uses this)
             # Must be > 0 (0 is background)
             obj.blender_obj.pass_index = instance_idx + 1
+            
+            # Ensure UV maps exist for texturing
+            self.scene_generator.ensure_uvs(obj)
             
             # Get object size
             bbox = obj.get_bound_box()
@@ -171,12 +174,21 @@ class DatasetGenerator:
             
             # Apply specific texture if requested, otherwise randomize material
             texture_name = None
+            initial_rot = None
+            
             if hasattr(obj_class, 'texture') and obj_class.texture:
                 texture_name = obj_class.texture
             elif hasattr(obj_class, 'textures') and obj_class.textures:
                 texture_name = np.random.choice(obj_class.textures)
+            
+            if hasattr(obj_class, 'initial_rotation') and obj_class.initial_rotation:
+                # Convert degrees to radians for Blender
+                initial_rot = [np.deg2rad(x) for x in obj_class.initial_rotation]
 
             cc_mat = self.scene_generator.cc_materials_dict.get(texture_name) if texture_name else None
+            
+            if texture_name and not cc_mat:
+                print(f"  Warning: Requested texture '{texture_name}' not found in CC0 materials dict")
 
             # Apply base color to object ONLY if no CC materials are available AND no texture specified
             if not self.scene_generator.cc_materials and not cc_mat:
@@ -186,7 +198,8 @@ class DatasetGenerator:
             self.randomizer.randomize_object(
                 obj,
                 cc_materials=self.scene_generator.cc_materials,
-                target_mat=cc_mat
+                target_mat=cc_mat,
+                custom_rotation=initial_rot
             )
 
             target_objects.append(obj)
@@ -224,7 +237,11 @@ class DatasetGenerator:
         self.scene_generator.add_lights(room_size, num_lights)
         
         # Setup camera
-        self.scene_generator.setup_camera()
+        self.scene_generator.setup_camera(room_size)
+        
+        # Render initial state debug image if requested
+        if self.config.get('scene', {}).get('debug_initial_state', False):
+            self.scene_generator.render_initial_state_debug(scene_idx, room_size)
         
         # Apply physics if enabled (move physics after cam setup for clarity, but doesn't change much)
         self.randomizer.apply_physics()
@@ -265,11 +282,6 @@ class DatasetGenerator:
         # Render
         print(f"  Rendering {num_poses} images...")
         
-        all_objs = bproc.object.get_all_mesh_objects()
-        for obj in all_objs:
-             cat_id = obj.blender_obj.get("category_id")
-             print(f"      - {obj.get_name()}: pass_index={obj.blender_obj.pass_index}, cat_id={cat_id}")
-
         data = bproc.renderer.render()
         
         # Save renders and extract annotations
@@ -293,7 +305,6 @@ class DatasetGenerator:
                 target_objects,
                 img_idx
             )
-            print(f"    Extracted {len(bboxes)} bboxes for image {img_idx}")
             
             # Save labels
             label_name = f"scene_{scene_idx:05d}_img_{img_idx:03d}.txt"

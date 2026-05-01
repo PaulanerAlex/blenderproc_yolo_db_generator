@@ -15,7 +15,10 @@ import numpy as np
 class ObjectClass:
     """Represents a single object class with its model and metadata."""
     
-    def __init__(self, name: str, model_path: str, class_id: int, texture: Optional[str] = None, textures: Optional[List[str]] = None):
+    def __init__(self, name: str, model_path: str, class_id: int, 
+                 texture: Optional[str] = None, 
+                 textures: Optional[List[str]] = None,
+                 initial_rotation: Optional[List[float]] = None):
         """
         Initialize object class.
         
@@ -25,12 +28,14 @@ class ObjectClass:
             class_id: Numeric class ID (0-indexed for YOLO)
             texture: Optional single texture
             textures: Optional list of textures
+            initial_rotation: Optional initial rotation in degrees [x, y, z]
         """
         self.name = name
         self.model_path = model_path
         self.class_id = class_id
         self.texture = texture
         self.textures = textures
+        self.initial_rotation = initial_rotation
         self.material_paths = self._find_materials()
     
     def _find_materials(self) -> Dict[str, str]:
@@ -79,22 +84,36 @@ class ObjectLoader:
         self._load_objects()
     
     def _load_objects(self):
-        """Scan models directory and load all object classes."""
+        """Scan models directory and load all object classes specified in config."""
         if not self.models_path.is_dir():
             raise ValueError(f"Models path is not a directory: {self.models_path}")
         
-        # Get all subdirectories (each represents one class)
-        class_dirs = sorted([
-            d for d in self.models_path.iterdir() 
-            if d.is_dir() and not d.name.startswith('.')
-        ])
-        
-        if not class_dirs:
-            raise ValueError(f"No object class directories found in {self.models_path}")
-        
         # Load object configurations from config
         obj_configs = self.config.get('scene', {}).get('objects', {})
-
+        
+        # Get all subdirectories (each represents one class)
+        # Filter to only those mentioned in config if specific classes are provided
+        all_dirs = [
+            d for d in self.models_path.iterdir() 
+            if d.is_dir() and not d.name.startswith('.')
+        ]
+        
+        # If config contains specific class folders, only load those
+        # Otherwise load everything in the models directory
+        class_dirs = []
+        for d in all_dirs:
+            if d.name in obj_configs:
+                class_dirs.append(d)
+        
+        # Fallback: if no specific class configs found, load everything
+        if not class_dirs:
+            class_dirs = all_dirs
+            
+        class_dirs.sort()  # Ensure deterministic order
+        
+        if not class_dirs:
+            raise ValueError(f"No valid object class directories found in {self.models_path}")
+        
         # Load each class
         for class_id, class_dir in enumerate(class_dirs):
             obj_files = list(class_dir.glob('*.obj'))
@@ -106,6 +125,9 @@ class ObjectLoader:
             # Use first .obj file found
             obj_file = obj_files[0]
             
+            if len(obj_files) > 1:
+                print(f"Warning: Multiple .obj files in {class_dir.name}, using {obj_file.name}")
+            
             # Get class-specific config
             obj_cfg = obj_configs.get(class_dir.name, {})
 
@@ -114,7 +136,8 @@ class ObjectLoader:
                 model_path=str(obj_file),
                 class_id=class_id,
                 texture=obj_cfg.get('texture'),
-                textures=obj_cfg.get('textures')
+                textures=obj_cfg.get('textures'),
+                initial_rotation=obj_cfg.get('initial_rotation')
             )
             
             self.object_classes.append(obj_class)

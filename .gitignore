@@ -51,6 +51,7 @@ models/**/*.obj
 models/**
 !models/.gitkeep
 models_cache/
+model_visualizations/*
 log.txt
 output_log.txt
 

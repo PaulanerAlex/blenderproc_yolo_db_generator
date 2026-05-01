@@ -27,6 +27,8 @@
     "room_size_multiplier_max": 10.0,
     "simulate_physics": true,
     "max_textures": 50,
+    "ambient_strength": 0.5,
+    "debug_initial_state": true,
     
     "distractors": {
       "min_count": 25,
@@ -44,31 +46,44 @@
     },
     
     "lights": {
-      "min_count": 4,
-      "max_count": 8,
+      "min_count": 1,
+      "max_count": 2,
       "min_intensity": 100,
-      "max_intensity": 300
+      "max_intensity": 200
     },
     
     "objects": {
-      "probe": {
-        "min_count": 1,
-        "max_count": 1,
-        "multiple_occurrences": false,
-        "scale_noise": 0.15,
-        "displacement_max": 0.0,
-        "pbr_noise": 0.3,
-        "cam_min_dist_rel": 0.5,
-        "cam_max_dist_rel": 3.5,
-        "textures": ["Metal050C_4K-JPG", "Metal011_4K-JPG"]
-      }
+      "min_count": 1,
+      "max_count": 1,
+      "multiple_occurrences": false,
+      "EB60x40x22": {
+        "textures": ["Plastic011_4K-JPG", "Plastic012A_4K-JPG"],
+        "initial_rotation": [270, 0, 0]
+      },
+      "EB60x40x32": {
+        "textures": ["Plastic011_4K-JPG", "Plastic012A_4K-JPG"],
+        "initial_rotation": [270, 0, 0]
+      },
+      "Eurobox 20L 40x22x30 v4": {
+        "textures": ["Plastic011_4K-JPG", "Plastic012A_4K-JPG"],
+        "initial_rotation": [0, 0, 90]
+      },
+      "Eurobox_61L_600x400x320_mm_v1": {
+        "textures": ["Plastic011_4K-JPG", "Plastic012A_4K-JPG"],
+        "initial_rotation": [0, 0, -90]
+      },
+      "scale_noise": 0.15,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.3,
+      "cam_min_dist_rel": 2.5,
+      "cam_max_dist_rel": 3.5
     }
   },
   
   "dataset": {
-    "num_scenes": 30,
+    "num_scenes": 40,
     "scenes_per_run": 1,
-    "images_per_scene": 20,
+    "images_per_scene": 5,
     "empty_images_per_scene": 3,
     "train_split": 0.7,
     "val_split": 0.2,
@@ -76,7 +91,7 @@
   },
   
   "output": {
-    "save_path": "./output/probe_dataset_v2",
+    "save_path": "./output/euro_box_dataset_v2",
     "yolo_format": "yolov11-obb",
     "save_depth": false,
     "save_normals": false,
@@ -86,7 +101,7 @@
     "detection_params": {
       "min_bbox_side_px": 10,
       "min_visibility": 0.3,
-      "force_fully_visible": true,
+      "force_fully_visible": false,
       "occlusion_samples": 150
     }
   }

@@ -219,9 +219,15 @@ class BBoxExtractor:
                     mask = (instance_segmap == instance_id).astype(np.uint8)
                     
                     # Get class ID from instance attributes
-                    if instance_attrs is not None and 'class_id' in instance_attrs:
-                        class_id = int(instance_attrs['class_id'][instance_id - 1])
-                    else:
+                    class_id = None
+                    if instance_attrs is not None:
+                         # Mapping varies depending on bproc version/settings
+                         if isinstance(instance_attrs, list) and instance_id - 1 < len(instance_attrs):
+                             attr = instance_attrs[instance_id - 1]
+                             if isinstance(attr, dict):
+                                 class_id = attr.get('category_id') or attr.get('class_id')
+                    
+                    if class_id is None:
                         # Fallback: assume instance_id is class_id
                         class_id = int(instance_id) - 1
                     
@@ -274,8 +280,6 @@ class BBoxExtractor:
         bbox_aabb = np.array([x, y, x + w, y + h])
         
         # Calculate visibility (ratio of actual pixels to bbox area)
-        # The visibility calculated here is the "simple" ratio. 
-        # We will override this in extract_from_dict with true_visibility.
         bbox_area = w * h
         visibility = total_pixels / bbox_area if bbox_area > 0 else 0.0
         

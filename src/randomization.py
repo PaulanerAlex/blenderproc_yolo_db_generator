@@ -144,8 +144,9 @@ class CameraSampler:
         Returns:
             True if valid pose found, False otherwise
         """
-        # Get object bounding box
-        bbox = target_obj.get_bound_box()
+        # Get object bounding box in world coordinates so the camera looks at the placed object,
+        # not at the mesh's local origin.
+        bbox = target_obj.get_bound_box(local_coords=False)
         obj_size = np.max(np.ptp(bbox, axis=0))
         
         # Calculate camera distance range
@@ -160,8 +161,8 @@ class CameraSampler:
         # Sample distance
         distance = self.rng.uniform(min_dist, max_dist)
         
-        # Sample point of interest on object (use bounding box center, not origin)
-        bbox = target_obj.get_bound_box()
+        # Sample point of interest on the placed object in world space.
+        bbox = target_obj.get_bound_box(local_coords=False)
         obj_center = np.mean(bbox, axis=0)
         
         poi = obj_center + self.rng.uniform(-obj_size/4, obj_size/4, size=3)
@@ -187,10 +188,48 @@ class CameraSampler:
             poi - cam_location,
             inplane_rot=self.rng.uniform(0, 2*np.pi)
         )
-        
+
         cam2world_matrix = bproc.math.build_transformation_mat(cam_location, rotation_matrix)
+
+        # Reject poses that do not actually place the target object in frame.
+        import bpy
+
+        camera_object = bpy.context.scene.camera
+        previous_matrix = camera_object.matrix_world.copy()
+        camera_object.matrix_world = cam2world_matrix
+
+        try:
+            projected = bproc.camera.project_points(bbox)
+        except Exception:
+            camera_object.matrix_world = previous_matrix
+            return False
+
+        if projected is None or len(projected) == 0 or np.any(np.isnan(projected)):
+            camera_object.matrix_world = previous_matrix
+            return False
+
+        resolution_x = bpy.context.scene.render.resolution_x
+        resolution_y = bpy.context.scene.render.resolution_y
+
+        x_min = np.min(projected[:, 0])
+        x_max = np.max(projected[:, 0])
+        y_min = np.min(projected[:, 1])
+        y_max = np.max(projected[:, 1])
+
+        intersects_frame = not (
+            x_max < 0 or y_max < 0 or x_min >= resolution_x or y_min >= resolution_y
+        )
+        projected_area = max(0.0, min(x_max, resolution_x) - max(x_min, 0.0)) * max(
+            0.0, min(y_max, resolution_y) - max(y_min, 0.0)
+        )
+
+        if not intersects_frame or projected_area < 100.0:
+            camera_object.matrix_world = previous_matrix
+            return False
+
+        camera_object.matrix_world = previous_matrix
         bproc.camera.add_camera_pose(cam2world_matrix)
-        
+
         return True
 
 
@@ -206,14 +245,33 @@ class PhysicsSimulator:
             duration: Simulation duration in seconds
             substeps: Number of substeps per frame
         """
+        import bpy
+        # Determine scene scale to adjust gravity
+        all_objs = bproc.object.get_all_mesh_objects()
+        max_size = 0.0
+        for obj in all_objs:
+            if not any(x in obj.get_name() for x in ["Wall", "Floor", "Ceiling"]):
+                bbox = obj.get_bound_box()
+                max_size = max(max_size, np.max(np.ptp(bbox, axis=0)))
+        
+        # Industrial Scale Adjustment:
+        # If objects are in mm (size > 100), we need much stronger gravity to fall in 2s
+        gravity = -9.81
+        if max_size > 100.0:
+            gravity = -9810.0 # Industrial strength gravity for mm scale
+            substeps = max(substeps, 20) # More substeps for high velocity
+            
+        bpy.context.scene.gravity = [0, 0, gravity]
+
         # Enable physics for all objects that should participate
-        for obj in bproc.object.get_all_mesh_objects():
+        for obj in all_objs:
             if not obj.get_name().startswith("Wall") and \
                not obj.get_name().startswith("Floor") and \
                not obj.get_name().startswith("Ceiling"):
                 obj.enable_rigidbody(
                     active=True,
-                    collision_shape='CONVEX_HULL'
+                    collision_shape='CONVEX_HULL',
+                    mass=1.0
                 )
             else:
                 # Walls, floor, ceiling are passive
@@ -225,7 +283,7 @@ class PhysicsSimulator:
         # Run simulation
         bproc.object.simulate_physics_and_fix_final_poses(
             min_simulation_time=duration,
-            max_simulation_time=duration * 2,  # Must be greater than min
+            max_simulation_time=duration * 1.5,
             check_object_interval=0.1,
             substeps_per_frame=substeps
         )
@@ -258,18 +316,12 @@ class SceneRandomizer:
         """
         # Apply material
         if target_mat:
-            print(f"    DEBUG: Applying target material: {target_mat.get_name()} to {obj.get_name()}")
             obj.replace_materials(target_mat)
         elif cc_materials:
             # Use random CC material with 80% probability
             if self.rng.random() < 0.8:
                 material = self.rng.choice(cc_materials)
-                print(f"    DEBUG: Applying random material: {material.get_name()} to {obj.get_name()}")
                 obj.replace_materials(material)
-            else:
-                print(f"    DEBUG: No material applied to {obj.get_name()} (random skip)")
-        else:
-            print(f"    DEBUG: No materials available for {obj.get_name()}")
 
         # Randomize PBR properties (e.g., roughness/metallic)
         self.obj_randomizer._add_material_noise(obj, 0.1)
@@ -280,7 +332,8 @@ class SceneRandomizer:
                          apply_scale: bool = True,
                          apply_material: bool = True,
                          apply_rotation: bool = True,
-                         target_mat: Optional[bproc.types.Material] = None):
+                         target_mat: Optional[bproc.types.Material] = None,
+                         custom_rotation: Optional[List[float]] = None):
         """
         Apply all randomizations to an object.
 
@@ -291,6 +344,7 @@ class SceneRandomizer:
             apply_material: Whether to randomize material
             apply_rotation: Whether to randomize rotation
             target_mat: Optional specific material to apply
+            custom_rotation: Optional fixed rotation [x, y, z] in radians
         """
         if apply_scale:
             self.obj_randomizer.randomize_scale(obj)
@@ -299,7 +353,10 @@ class SceneRandomizer:
             self.randomize_material(obj, cc_materials, target_mat)
 
         if apply_rotation:
-            self.obj_randomizer.randomize_rotation(obj)
+            if custom_rotation is not None:
+                obj.set_rotation_euler(custom_rotation)
+            else:
+                self.obj_randomizer.randomize_rotation(obj)
     def sample_cameras(self,
                       target_objects: List[bproc.types.MeshObject],
                       room_size: float,

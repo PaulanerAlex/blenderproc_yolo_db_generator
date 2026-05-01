@@ -394,6 +394,13 @@ class SceneGenerator:
         min_intensity = light_config.get('min_intensity', 50)
         max_intensity = light_config.get('max_intensity', 200)
         
+        # Blender point light intensity follows inverse square law.
+        # To maintain consistent brightness as room size changes,
+        # we scale the energy by room_size squared.
+        # Reference: config values of 100-300 are assumed to be for ~2.0m room.
+        base_room_size = 2.0
+        intensity_scale = (room_size / base_room_size)**2
+        
         for i in range(num_lights):
             # Random light type
             light_type = np.random.choice(['POINT', 'SPOT'])
@@ -407,14 +414,21 @@ class SceneGenerator:
             light = bproc.types.Light()
             light.set_type(light_type)
             light.set_location([x, y, z])
-            light.set_energy(np.random.uniform(min_intensity, max_intensity))
+            
+            energy = np.random.uniform(min_intensity, max_intensity) * intensity_scale
+            light.set_energy(energy)
             
             # Random color (slight variation from white)
             color = np.random.uniform([0.9, 0.9, 0.9], [1.0, 1.0, 1.0])
             light.set_color(color)
     
-    def setup_camera(self):
-        """Setup camera with configured intrinsics."""
+    def setup_camera(self, room_size: float = 100.0):
+        """
+        Setup camera with configured intrinsics.
+
+        Args:
+            room_size: Size of the room to adjust clipping planes
+        """
         # Get camera parameters
         px = self.camera_config.get('px', 600)
         py = self.camera_config.get('py', 600)
@@ -422,7 +436,7 @@ class SceneGenerator:
         v0 = self.camera_config.get('v0', 240)
         width = self.camera_config.get('width', 640)
         height = self.camera_config.get('height', 480)
-        
+
         # Apply randomization if configured
         randomize_percent = self.camera_config.get('randomize_params_percent', 0) / 100.0
         if randomize_percent > 0:
@@ -430,10 +444,10 @@ class SceneGenerator:
             py *= np.random.uniform(1 - randomize_percent, 1 + randomize_percent)
             u0 *= np.random.uniform(1 - randomize_percent, 1 + randomize_percent)
             v0 *= np.random.uniform(1 - randomize_percent, 1 + randomize_percent)
-        
+
         # Set camera intrinsics
         bproc.camera.set_resolution(width, height)
-        
+
         # Convert to Blender camera parameters
         K = np.array([
             [px, 0, u0],
@@ -441,11 +455,12 @@ class SceneGenerator:
             [0, 0, 1]
         ])
         bproc.camera.set_intrinsics_from_K_matrix(K, width, height)
-        
+
         # Adjust clipping planes for small/close objects
         import bpy
-        bpy.context.scene.camera.data.clip_start = 0.001
-        bpy.context.scene.camera.data.clip_end = 100.0
+        bpy.context.scene.camera.data.clip_start = 0.01
+        # Dynamic clip end based on room size (with safety margin)
+        bpy.context.scene.camera.data.clip_end = max(room_size * 5.0, 5000.0)
     
     def setup_renderer(self):
         """Configure rendering settings."""
@@ -474,8 +489,77 @@ class SceneGenerator:
         bproc.renderer.enable_depth_output(activate_antialiasing=False)
         
         # Enable segmentation (required for bbox extraction)
-        bproc.renderer.enable_segmentation_output(map_by=["class", "instance"])
+        bproc.renderer.enable_segmentation_output(
+            map_by=["cp_category_id", "name", "instance"],
+            default_values={"cp_category_id": 0, "name": "Background"}
+        )
+
+        # Add a low-intensity world background for ambient lighting
+        # This prevents completely black shadows in unlit areas.
+        ambient_strength = self.scene_config.get('ambient_strength', 0.5)
+        bproc.renderer.set_world_background([0.1, 0.1, 0.1], strength=ambient_strength)
     
+    def render_initial_state_debug(self, scene_idx: int, room_size: float):
+        """
+        Render a debug image of the initial scene state before physics.
+        Saves to a 'debug' subdirectory in the output path.
+        Provides a 'dollhouse' view by temporarily hiding some walls.
+        """
+        import bpy
+        import imageio
+        from pathlib import Path
+        
+        # 1. Temporarily hide ceiling and some walls for a "dollhouse" view
+        to_hide = ["Ceiling", "Wall_Front", "Wall_Right"]
+        hidden_objs = []
+        for obj in bproc.object.get_all_mesh_objects():
+            if any(name in obj.get_name() for name in to_hide):
+                obj.blender_obj.hide_render = True
+                hidden_objs.append(obj)
+
+        # 2. Create a high-angle overview camera pose
+        # Positioned outside but looking in through the hidden walls
+        cam_location = [room_size * 0.7, room_size * 0.7, room_size * 0.8]
+        poi = [0, 0, room_size * 0.1]
+        rotation_matrix = bproc.camera.rotation_from_forward_vec(np.array(poi) - np.array(cam_location))
+        cam2world = bproc.math.build_transformation_mat(cam_location, rotation_matrix)
+        bproc.camera.add_camera_pose(cam2world)
+        
+        # 3. Add a temporary light near the camera for the overview
+        temp_light = bproc.types.Light()
+        temp_light.set_location(cam_location)
+        temp_light.set_energy(500 * (room_size/2.0)**2)
+        
+        # Temporarily reduce samples for speed
+        original_samples = bpy.context.scene.cycles.samples
+        bpy.context.scene.cycles.samples = 16
+        
+        # 4. Render
+        data = bproc.renderer.render()
+        
+        # 5. Save image
+        save_path = Path(self.config['output']['save_path']) / 'debug'
+        save_path.mkdir(parents=True, exist_ok=True)
+        out_file = save_path / f"scene_{scene_idx:05d}_initial.png"
+        
+        image_data = data['colors'][0]
+        if image_data.dtype != np.uint8:
+            image_data = np.clip(image_data, 0, 255).astype(np.uint8)
+        imageio.imwrite(str(out_file), image_data)
+        
+        # 6. Cleanup: Restore state
+        bpy.context.scene.cycles.samples = original_samples
+        temp_light.delete()
+        for obj in hidden_objs:
+            obj.blender_obj.hide_render = False
+            
+        # Clear the debug camera pose so it doesn't affect the real dataset
+        cam_obj = bpy.context.scene.camera
+        if cam_obj.animation_data:
+            cam_obj.animation_data_clear()
+            
+        print(f"    ✓ Saved dollhouse initial state debug image to {out_file}")
+
     def compute_room_size(self, object_sizes: List[float]) -> float:
         """
         Compute room size based on largest object.
@@ -495,6 +579,28 @@ class SceneGenerator:
         room_size = max_obj_size * multiplier
         
         return room_size
+    
+    def ensure_uvs(self, obj: bproc.types.MeshObject):
+        """
+        Ensure object has UV coordinates, generate if missing.
+        Uses Smart UV Project for automatic unwrapping.
+        """
+        import bpy
+        
+        # Select the object and make it active
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.blender_obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj.blender_obj
+        
+        # Check if UV map already exists
+        if not obj.blender_obj.data.uv_layers:
+            # print(f"    Generating UV map for {obj.get_name()}...")
+            # Switch to edit mode to run Smart UV Project
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            # Smart UV Project with some margin to prevent bleeding
+            bpy.ops.uv.smart_project(island_margin=0.001)
+            bpy.ops.object.mode_set(mode='OBJECT')
     
     def apply_base_color(self, obj: bproc.types.MeshObject):
         """Ensure objects are visible by creating/applying colors to materials."""
