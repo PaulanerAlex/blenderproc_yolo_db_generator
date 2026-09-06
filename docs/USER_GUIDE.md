@@ -310,6 +310,9 @@ dataset:
     "max_intensity": 200
   },
   "objects": {
+    "your_object_name": {         // Per-object configuration
+      "randomize_materials": false // Preserve original .obj material
+    },
     "min_count": 1,               // Min objects per scene
     "max_count": 5,               // Max objects per scene
     "multiple_occurrences": true, // Allow same class multiple times
@@ -317,7 +320,9 @@ dataset:
     "displacement_max": 0.0,      // Geometry displacement
     "pbr_noise": 0.3,             // PBR property variation
     "cam_min_dist_rel": 1.0,      // Min camera distance (relative)
-    "cam_max_dist_rel": 3.0       // Max camera distance (relative)
+    "cam_max_dist_rel": 3.0,      // Max camera distance (relative)
+    "cam_min_elev_deg": 0.0,      // Min camera elevation (0 = horizontal)
+    "cam_max_elev_deg": 90.0      // Max camera elevation (90 = straight down)
   }
 }
 ```

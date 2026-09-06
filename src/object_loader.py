@@ -18,7 +18,9 @@ class ObjectClass:
     def __init__(self, name: str, model_path: str, class_id: int, 
                  texture: Optional[str] = None, 
                  textures: Optional[List[str]] = None,
-                 initial_rotation: Optional[List[float]] = None):
+                 randomize_materials: bool = True,
+                 initial_rotation: Optional[List[float]] = None,
+                 initial_height: Optional[float] = None):
         """
         Initialize object class.
         
@@ -28,14 +30,18 @@ class ObjectClass:
             class_id: Numeric class ID (0-indexed for YOLO)
             texture: Optional single texture
             textures: Optional list of textures
+            randomize_materials: Whether to apply random materials
             initial_rotation: Optional initial rotation in degrees [x, y, z]
+            initial_height: Optional initial Z height
         """
         self.name = name
         self.model_path = model_path
         self.class_id = class_id
         self.texture = texture
         self.textures = textures
+        self.randomize_materials = randomize_materials
         self.initial_rotation = initial_rotation
+        self.initial_height = initial_height
         self.material_paths = self._find_materials()
     
     def _find_materials(self) -> Dict[str, str]:
@@ -91,28 +97,39 @@ class ObjectLoader:
         # Load object configurations from config
         obj_configs = self.config.get('scene', {}).get('objects', {})
         
+        # Define reserved keys that are NOT class names
+        reserved_keys = [
+            'min_count', 'max_count', 'multiple_occurrences', 
+            'scale_noise', 'displacement_max', 'pbr_noise',
+            'cam_min_dist_rel', 'cam_max_dist_rel'
+        ]
+        
         # Get all subdirectories (each represents one class)
-        # Filter to only those mentioned in config if specific classes are provided
         all_dirs = [
             d for d in self.models_path.iterdir() 
             if d.is_dir() and not d.name.startswith('.')
         ]
         
-        # If config contains specific class folders, only load those
-        # Otherwise load everything in the models directory
+        # Determine which classes to load
+        # We only load directories that have a corresponding entry in obj_configs
+        # and are not reserved keys.
         class_dirs = []
         for d in all_dirs:
-            if d.name in obj_configs:
+            if d.name in obj_configs and d.name not in reserved_keys:
                 class_dirs.append(d)
         
-        # Fallback: if no specific class configs found, load everything
+        # If no specific class folders mentioned in config, fall back to loading all
         if not class_dirs:
-            class_dirs = all_dirs
+            # But only if no class names were provided (to avoid loading everything when one typo exists)
+            # Actually, let's look for keys that aren't reserved.
+            has_class_names = any(k not in reserved_keys for k in obj_configs.keys())
+            if not has_class_names:
+                class_dirs = all_dirs
             
         class_dirs.sort()  # Ensure deterministic order
         
         if not class_dirs:
-            raise ValueError(f"No valid object class directories found in {self.models_path}")
+            raise ValueError(f"No valid object class directories found in {self.models_path} matching config")
         
         # Load each class
         for class_id, class_dir in enumerate(class_dirs):
@@ -137,7 +154,9 @@ class ObjectLoader:
                 class_id=class_id,
                 texture=obj_cfg.get('texture'),
                 textures=obj_cfg.get('textures'),
-                initial_rotation=obj_cfg.get('initial_rotation')
+                randomize_materials=obj_cfg.get('randomize_materials', True),
+                initial_rotation=obj_cfg.get('initial_rotation'),
+                initial_height=obj_cfg.get('initial_height')
             )
             
             self.object_classes.append(obj_class)

@@ -1,0 +1,87 @@
+{
+  "seed": {
+    "numpy": 47,
+    "blenderproc": "446"
+  },
+  "models_path": "./models",
+  "cc_textures_path": "/home/paul/akamav/dev/projects/blenderproc/cc0_textures",
+  "camera": {
+    "px": 600,
+    "py": 600,
+    "u0": 320,
+    "v0": 240,
+    "width": 640,
+    "height": 480,
+    "randomize_params_percent": 5.0
+  },
+  "rendering": {
+    "max_samples": 64,
+    "denoiser": "OPTIX"
+  },
+  "scene": {
+    "room_size_multiplier_min": 9.0,
+    "room_size_multiplier_max": 20.0,
+    "simulate_physics": true,
+    "max_textures": 50,
+    "distractors": {
+      "min_count": 25,
+      "max_count": 30,
+      "min_size_rel_scene": 0.005,
+      "max_size_rel_scene": 0.035,
+      "custom_distractors_path": null,
+      "custom_distractor_prob": 0.5,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.5,
+      "emissive_prob": 0.1,
+      "emissive_strength_min": 2.0,
+      "emissive_strength_max": 5.0,
+      "texture_blacklist": []
+    },
+    "lights": {
+      "min_count": 4,
+      "max_count": 8,
+      "min_intensity": 100,
+      "max_intensity": 300
+    },
+    "objects": {
+      "frame_blue_30": {
+        "randomize_materials": false
+      },
+      "frame_red_30": {
+        "randomize_materials": false
+      },
+      "min_count": 4,
+      "max_count": 4,
+      "multiple_occurrences": true,
+      "scale_noise": 0.15,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.3,
+      "cam_min_dist_rel": 2.5,
+      "cam_max_dist_rel": 4.5,
+      "cam_min_elev_deg": 30.0
+    }
+  },
+  "dataset": {
+    "num_scenes": 60,
+    "scenes_per_run": 1,
+    "images_per_scene": 10,
+    "empty_images_per_scene": 3,
+    "train_split": 0.7,
+    "val_split": 0.2,
+    "test_split": 0.1
+  },
+  "output": {
+    "save_path": "./output/frames_v1_sim",
+    "yolo_format": "yolov11-obb",
+    "save_depth": false,
+    "save_normals": false,
+    "save_segmentation": false,
+    "save_pose": true,
+    "detection_params": {
+      "min_bbox_side_px": 15,
+      "min_visibility": 0.0,
+      "force_fully_visible": false,
+      "occlusion_samples": 150
+    }
+  }
+}

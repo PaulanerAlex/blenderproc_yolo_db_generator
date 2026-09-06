@@ -15,6 +15,7 @@ import bpy
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import mathutils
+import os
 
 
 class SceneGenerator:
@@ -51,6 +52,12 @@ class SceneGenerator:
         self.cc_materials = []
         if config.get('cc_textures_path'):
             self._load_cc_materials(config['cc_textures_path'])
+
+        distractor_config = self.scene_config.get('distractors', {})
+        self.custom_distractor_prob = distractor_config.get('custom_distractor_prob', 0.5)
+        self.custom_distractor_models = self._load_custom_distractor_models(
+            distractor_config.get('custom_distractors_path')
+        )
     
     def load_cc_materials(self):
         """Load CC0 texture materials from configured path."""
@@ -304,17 +311,38 @@ class SceneGenerator:
         shapes = ['CUBE', 'SPHERE', 'CYLINDER', 'MONKEY', 'CONE']
         
         for i in range(num_distractors):
-            # Random shape
-            shape = np.random.choice(shapes)
-            
+            use_custom_model = bool(self.custom_distractor_models) and np.random.random() < self.custom_distractor_prob
+
             # Random size (relative to room)
             min_size = distractor_config.get('min_size_rel_scene', 0.05) * room_size
             max_size = distractor_config.get('max_size_rel_scene', 0.1) * room_size
             size = np.random.uniform(min_size, max_size)
-            
-            # Create distractor
-            distractor = bproc.object.create_primitive(shape, scale=[size, size, size])
-            distractor.set_name(f"Distractor_{i}")
+
+            if use_custom_model:
+                model_path = str(np.random.choice(self.custom_distractor_models))
+                loaded_objects = bproc.loader.load_obj(model_path)
+                if len(loaded_objects) > 1:
+                    loaded_objects[0].join_with_other_objects(loaded_objects[1:])
+                distractor = loaded_objects[0]
+                distractor.set_name(f"Custom_Distractor_{i}")
+            else:
+                # Random shape
+                shape = np.random.choice(shapes)
+                # Create distractor
+                distractor = bproc.object.create_primitive(shape, scale=[size, size, size])
+                distractor.set_name(f"Distractor_{i}")
+
+            # Apply a uniform scale for custom assets too, so they fit the scene volume.
+            if use_custom_model:
+                try:
+                    bbox = distractor.get_bound_box()
+                    obj_size = np.max(np.ptp(bbox, axis=0))
+                    if obj_size > 0:
+                        scale_factor = size / obj_size
+                        current_scale = distractor.get_scale()
+                        distractor.set_scale(current_scale * scale_factor)
+                except Exception:
+                    pass
             
             # Random position within room
             x = np.random.uniform(-room_size/3, room_size/3)
@@ -329,16 +357,20 @@ class SceneGenerator:
                 np.random.uniform(0, 2*np.pi)
             ])
             
-            # Assign random material
-            if available_materials:
-                material = np.random.choice(available_materials)
-                distractor.replace_materials(material)
-                
-                # Add PBR noise
-                pbr_noise = distractor_config.get('pbr_noise', 0.5)
-                if pbr_noise > 0:
-                    self._add_material_noise(distractor, pbr_noise)
-            else:
+            # Assign random material for procedural distractors only.
+            # Custom models keep their own materials/textures when present.
+            if not use_custom_model:
+                if available_materials:
+                    material = np.random.choice(available_materials)
+                    distractor.replace_materials(material)
+                    
+                    # Add PBR noise
+                    pbr_noise = distractor_config.get('pbr_noise', 0.5)
+                    if pbr_noise > 0:
+                        self._add_material_noise(distractor, pbr_noise)
+                else:
+                    self.apply_base_color(distractor)
+            elif not distractor.get_materials():
                 self.apply_base_color(distractor)
             
             # Make emissive with some probability
@@ -359,6 +391,36 @@ class SceneGenerator:
             distractors.append(distractor)
         
         return distractors
+
+    def _load_custom_distractor_models(self, custom_path: Optional[str]) -> List[str]:
+        """Discover custom distractor OBJ assets from a directory."""
+        if not custom_path:
+            return []
+
+        root = Path(custom_path)
+        if not root.exists() or not root.is_dir():
+            print(f"Warning: custom distractor path is not a directory: {custom_path}")
+            return []
+
+        model_paths: List[str] = []
+
+        direct_obj_files = sorted(root.glob("*.obj"))
+        if direct_obj_files:
+            model_paths.extend(str(path) for path in direct_obj_files)
+
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.name.startswith('.'):
+                continue
+            obj_files = sorted(child.glob("*.obj"))
+            if obj_files:
+                model_paths.append(str(obj_files[0]))
+
+        if model_paths:
+            print(f"Loaded {len(model_paths)} custom distractor model(s) from {custom_path}")
+        else:
+            print(f"Warning: no custom distractor .obj files found in {custom_path}")
+
+        return model_paths
     
     def _add_material_noise(self, obj: bproc.types.MeshObject, noise_amount: float):
         """Add random noise to material PBR properties."""
@@ -682,8 +744,22 @@ class SceneGenerator:
     
     def clean_scene(self):
         """Remove all objects from scene."""
+        # Standard bproc cleanup
         bproc.clean_up()
+        
+        # Manual extra cleanup using bpy to be absolutely sure
+        import bpy
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH' and not obj.name.startswith("Camera"):
+                bpy.data.objects.remove(obj, do_unlink=True)
+        
+        # Clear materials and other data blocks that might persist
+        for mat in bpy.data.materials:
+            if not mat.users:
+                bpy.data.materials.remove(mat)
+                
         self.cc_materials = []
+        self.cc_materials_dict = {}
 
 
 

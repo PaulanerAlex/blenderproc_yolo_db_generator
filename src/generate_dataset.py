@@ -137,12 +137,16 @@ class DatasetGenerator:
         max_objs = obj_config.get('max_count', 5)
         num_objects = np.random.randint(min_objs, max_objs + 1)
         allow_duplicates = obj_config.get('multiple_occurrences', True)
-        
+
+        # Ensure we don't request more unique objects than available classes
+        if not allow_duplicates:
+            num_objects = min(num_objects, self.object_loader.get_num_classes())
+
         object_classes = self.object_loader.get_random_classes(
             num_objects,
             allow_duplicates=allow_duplicates
         )
-        
+
         # Load and place target objects
         target_objects = []
         obj_sizes = []
@@ -191,13 +195,14 @@ class DatasetGenerator:
                 print(f"  Warning: Requested texture '{texture_name}' not found in CC0 materials dict")
 
             # Apply base color to object ONLY if no CC materials are available AND no texture specified
-            if not self.scene_generator.cc_materials and not cc_mat:
+            if not self.scene_generator.cc_materials and not cc_mat and obj_class.randomize_materials:
                 self.scene_generator.apply_base_color(obj)
 
             # Randomize object
             self.randomizer.randomize_object(
                 obj,
                 cc_materials=self.scene_generator.cc_materials,
+                apply_material=obj_class.randomize_materials,
                 target_mat=cc_mat,
                 custom_rotation=initial_rot
             )
@@ -216,10 +221,17 @@ class DatasetGenerator:
             # Random position in room
             x = np.random.uniform(-room_size/4, room_size/4)
             y = np.random.uniform(-room_size/4, room_size/4)
-            # Ensure it's above the floor
-            z = np.random.uniform(obj_sizes[i]/2 + 0.1, room_size/2)
+
+            # Check for initial height in class config
+            obj_class = object_classes[i]
+            if hasattr(obj_class, 'initial_height') and obj_class.initial_height is not None:
+                z = obj_class.initial_height
+            else:
+                # Ensure it's above the floor
+                z = np.random.uniform(obj_sizes[i]/2 + 0.1, room_size/2)
+
             obj.set_location([x, y, z])
-        
+
         # Add distractors
         distractor_config = self.config.get('scene', {}).get('distractors', {})
         num_distractors = np.random.randint(
@@ -266,15 +278,19 @@ class DatasetGenerator:
             return [], []
         
         # Sample camera poses
+        import bpy
+        if bpy.context.scene.camera and bpy.context.scene.camera.animation_data:
+            bpy.context.scene.camera.animation_data_clear()
+
         dataset_config = self.config.get('dataset', {})
         num_images = dataset_config.get('images_per_scene', 10)
-        
+
         num_poses = self.randomizer.sample_cameras(
             target_objects,
             room_size,
             num_images
         )
-        
+
         if num_poses == 0:
             print(f"  Warning: No valid camera poses found for scene {scene_idx}")
             return [], []

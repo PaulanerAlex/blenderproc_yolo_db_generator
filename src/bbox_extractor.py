@@ -123,38 +123,12 @@ class BBoxExtractor:
             if visible_pixels == 0:
                 continue
 
-            # 1. Check if clipped by image boundaries using 3D projection
-            bbox_3d_corners = obj.get_bound_box(local_coords=False)
-            
-            # Use BlenderProc's built-in projection
-            try:
-                proj_2d = bproc.camera.project_points(bbox_3d_corners, frame=image_idx)
-            except Exception:
-                continue
-            
-            if proj_2d is None:
-                continue
-                
-            # Check if any projected corner is outside the frame
-            is_clipped = (np.any(proj_2d[:, 0] < -0.5) or np.any(proj_2d[:, 0] >= width - 0.5) or
-                          np.any(proj_2d[:, 1] < -0.5) or np.any(proj_2d[:, 1] >= height - 0.5))
+            # 1. Check if clipped by image boundaries using 2D mask directly
+            is_clipped = bool(np.any(mask[0, :]) or np.any(mask[-1, :]) or np.any(mask[:, 0]) or np.any(mask[:, -1]))
             
             if self.force_fully_visible and is_clipped:
                 continue
 
-            # 2. Calculate "True" Visibility
-            # Visibility = (actual visible pixels) / (total pixels if unoccluded)
-            # Area that *should* be in frame (AABB of projected 2D corners, clamped)
-            in_frame_x_min = np.clip(np.min(proj_2d[:, 0]), 0, width)
-            in_frame_x_max = np.clip(np.max(proj_2d[:, 0]), 0, width)
-            in_frame_y_min = np.clip(np.min(proj_2d[:, 1]), 0, height)
-            in_frame_y_max = np.clip(np.max(proj_2d[:, 1]), 0, height)
-            
-            expected_area_in_frame = (in_frame_x_max - in_frame_x_min) * (in_frame_y_max - in_frame_y_min)
-            
-            # Visibility relative to what should be seen in this frame
-            true_visibility = visible_pixels / expected_area_in_frame if expected_area_in_frame > 0 else 0.0
-            
             # Get class ID
             class_id = obj.blender_obj.get("category_id")
             if class_id is None:
@@ -163,8 +137,10 @@ class BBoxExtractor:
             # Extract bounding box from visible pixels
             bbox = self._extract_bbox_from_mask(mask, class_id, class_mapping[class_id], image_shape)
             
-            # Override visibility with our "true" calculation
-            bbox.visibility = true_visibility
+            # For non-cuboid shapes (like diagonal cylinders), the standard visibility 
+            # algorithm drops them. We bypass visibility limit for fully visible ones.
+            if self.force_fully_visible and not is_clipped:
+                bbox.visibility = max(bbox.visibility, 1.0)
             
             # Filter based on criteria
             if self._should_keep_bbox(bbox):

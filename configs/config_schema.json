@@ -281,6 +281,16 @@
               "description": "Maximum camera distance relative to object size",
               "minimum": 0.1,
               "default": 3.0
+            },
+            "cam_min_elev_deg": {
+              "type": "number",
+              "description": "Minimum camera elevation angle in degrees (0 = horizontal)",
+              "default": 0.0
+            },
+            "cam_max_elev_deg": {
+              "type": "number",
+              "description": "Maximum camera elevation angle in degrees (90 = straight down)",
+              "default": 90.0
             }
           },
           "additionalProperties": {
@@ -293,12 +303,21 @@
                 "type": "array",
                 "items": { "type": "string" }
               },
+              "randomize_materials": {
+                "type": "boolean",
+                "description": "Whether to apply random CC materials and base color fallbacks to this object",
+                "default": true
+              },
               "initial_rotation": {
                 "type": "array",
                 "items": { "type": "number" },
                 "minItems": 3,
                 "maxItems": 3,
                 "description": "Initial Euler rotation in degrees [x, y, z] before physics drop"
+              },
+              "initial_height": {
+                "type": "number",
+                "description": "Initial Z-coordinate (height) of the object before physics drop"
               }
             }
           }

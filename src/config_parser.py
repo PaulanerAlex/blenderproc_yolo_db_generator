@@ -100,7 +100,9 @@ class Config:
                     'displacement_max': 0.0,
                     'pbr_noise': 0.3,
                     'cam_min_dist_rel': 1.0,
-                    'cam_max_dist_rel': 3.0
+                    'cam_max_dist_rel': 3.0,
+                    'cam_min_elev_deg': 0.0,
+                    'cam_max_elev_deg': 90.0
                 }
             },
             'dataset': {
@@ -248,6 +250,12 @@ class ConfigParser:
         if 'cc_textures_path' in config:
             if config['cc_textures_path'] and not os.path.exists(config['cc_textures_path']):
                 errors.append(f"cc_textures_path does not exist: {config['cc_textures_path']}")
+
+        if 'scene' in config and 'distractors' in config['scene']:
+            distractors = config['scene']['distractors']
+            custom_distractors_path = distractors.get('custom_distractors_path')
+            if custom_distractors_path and not os.path.exists(custom_distractors_path):
+                errors.append(f"distractors.custom_distractors_path does not exist: {custom_distractors_path}")
         
         # Validate splits sum to 1.0
         if 'dataset' in config:
@@ -291,6 +299,8 @@ class ConfigParser:
                     errors.append("objects.min_count must be at least 1")
                 if o.get('cam_min_dist_rel', 0) > o.get('cam_max_dist_rel', 1):
                     errors.append("objects.cam_min_dist_rel must be <= cam_max_dist_rel")
+                if o.get('cam_min_elev_deg', 0.0) > o.get('cam_max_elev_deg', 90.0):
+                    errors.append("objects.cam_min_elev_deg must be <= cam_max_elev_deg")
         
         # Validate YOLO format
         if 'output' in config:

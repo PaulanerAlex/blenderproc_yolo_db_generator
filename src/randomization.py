@@ -169,7 +169,11 @@ class CameraSampler:
         
         # Sample camera location on sphere around POI
         theta = self.rng.uniform(0, 2 * np.pi)  # Azimuth
-        phi = self.rng.uniform(0, np.pi/2)  # Elevation (0 to 90 degrees)
+        
+        # Get elevation range (0 to 90 degrees by default)
+        min_elev = self.config.get('cam_min_elev_deg', 0.0)
+        max_elev = self.config.get('cam_max_elev_deg', 90.0)
+        phi = self.rng.uniform(np.deg2rad(min_elev), np.deg2rad(max_elev))  # Elevation
         
         cam_location = poi + distance * np.array([
             np.sin(phi) * np.cos(theta),
