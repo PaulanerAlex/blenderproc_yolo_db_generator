@@ -3,7 +3,11 @@
   "title": "Blender YOLO Dataset Generator Configuration",
   "description": "Configuration schema for generating YOLO training datasets with BlenderProc",
   "type": "object",
-  "required": ["models_path", "output", "dataset"],
+  "required": [
+    "models_path",
+    "output",
+    "dataset"
+  ],
   "properties": {
     "seed": {
       "type": "object",
@@ -71,7 +75,14 @@
           "default": 5.0
         }
       },
-      "required": ["px", "py", "u0", "v0", "width", "height"]
+      "required": [
+        "px",
+        "py",
+        "u0",
+        "v0",
+        "width",
+        "height"
+      ]
     },
     "rendering": {
       "type": "object",
@@ -84,8 +95,16 @@
           "default": 32
         },
         "denoiser": {
-          "type": ["string", "null"],
-          "enum": [null, "INTEL", "OPTIX", "OPENIMAGEDENOISE"],
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "INTEL",
+            "OPTIX",
+            "OPENIMAGEDENOISE"
+          ],
           "description": "Denoiser to use. OPTIX requires compatible Nvidia GPU",
           "default": "OPTIX"
         }
@@ -103,9 +122,39 @@
         },
         "room_size_multiplier_max": {
           "type": "number",
-          "description": "Maximum room size as factor of largest object",
-          "minimum": 1.0,
+          "description": "Maximum room size relative to max object size",
+          "minimum": 2.0,
           "default": 10.0
+        },
+        "room_min_width": {
+          "type": "number",
+          "description": "Optional explicit minimum width of the room (X axis)",
+          "minimum": 1.0
+        },
+        "room_max_width": {
+          "type": "number",
+          "description": "Optional explicit maximum width of the room (X axis)",
+          "minimum": 1.0
+        },
+        "room_min_length": {
+          "type": "number",
+          "description": "Optional explicit minimum length of the room (Y axis)",
+          "minimum": 1.0
+        },
+        "room_max_length": {
+          "type": "number",
+          "description": "Optional explicit maximum length of the room (Y axis)",
+          "minimum": 1.0
+        },
+        "room_min_height": {
+          "type": "number",
+          "description": "Optional explicit minimum height of the room (Z axis)",
+          "minimum": 1.0
+        },
+        "room_max_height": {
+          "type": "number",
+          "description": "Optional explicit maximum height of the room (Z axis)",
+          "minimum": 1.0
         },
         "simulate_physics": {
           "type": "boolean",
@@ -158,16 +207,6 @@
               "maximum": 1.0,
               "default": 0.1
             },
-            "custom_distractors_path": {
-              "type": ["string", "null"],
-              "description": "Path to custom distractor models directory"
-            },
-            "custom_distractor_prob": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "default": 0.5
-            },
             "displacement_max": {
               "type": "number",
               "description": "Maximum displacement amount (0 = disabled, warning: slow)",
@@ -197,10 +236,45 @@
               "minimum": 0.0,
               "default": 5.0
             },
+            "min_rotation": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Minimum Euler rotation in degrees [x, y, z] for distractors"
+            },
+            "max_rotation": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Maximum Euler rotation in degrees [x, y, z] for distractors"
+            },
+            "place_on_ground": {
+              "type": "boolean",
+              "description": "Whether to place distractors firmly on the floor",
+              "default": false
+            },
             "texture_blacklist": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "List of texture folder names to exclude for floor and distractor objects"
+            },
+            "min_size": {
+              "type": "number",
+              "description": "Explicit minimum absolute size (overrides rel_scene)",
+              "minimum": 0.0
+            },
+            "max_size": {
+              "type": "number",
+              "description": "Explicit maximum absolute size (overrides rel_scene)",
+              "minimum": 0.0
             }
           }
         },
@@ -291,17 +365,58 @@
               "type": "number",
               "description": "Maximum camera elevation angle in degrees (90 = straight down)",
               "default": 90.0
+            },
+            "cam_min_roll_deg": {
+              "type": "number",
+              "description": "Minimum camera roll angle in degrees (0 = laying flat relative to room)",
+              "default": 0.0
+            },
+            "cam_max_roll_deg": {
+              "type": "number",
+              "description": "Maximum camera roll angle in degrees",
+              "default": 360.0
+            },
+            "cam_min_pitch_deg": {
+              "type": "number",
+              "description": "Minimum camera pitch offset in degrees (0 = looking directly at object)",
+              "default": 0.0
+            },
+            "cam_max_pitch_deg": {
+              "type": "number",
+              "description": "Maximum camera pitch offset in degrees",
+              "default": 0.0
+            },
+            "cam_min_yaw_deg": {
+              "type": "number",
+              "description": "Minimum camera yaw offset in degrees (0 = looking directly at object)",
+              "default": 0.0
+            },
+            "cam_max_yaw_deg": {
+              "type": "number",
+              "description": "Maximum camera yaw offset in degrees",
+              "default": 0.0
             }
           },
           "additionalProperties": {
             "type": "object",
             "properties": {
+              "class_id": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Numeric class ID for YOLO training (allows grouping multiple models under the same class index)"
+              },
+              "class_name": {
+                "type": "string",
+                "description": "Training class name/label for YOLO data.yaml and classes.txt"
+              },
               "texture": {
                 "type": "string"
               },
               "textures": {
                 "type": "array",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               },
               "randomize_materials": {
                 "type": "boolean",
@@ -310,15 +425,108 @@
               },
               "initial_rotation": {
                 "type": "array",
-                "items": { "type": "number" },
+                "items": {
+                  "type": "number"
+                },
                 "minItems": 3,
                 "maxItems": 3,
                 "description": "Initial Euler rotation in degrees [x, y, z] before physics drop"
+              },
+              "min_rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Minimum Euler rotation in degrees [x, y, z]"
+              },
+              "max_rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "Maximum Euler rotation in degrees [x, y, z]"
               },
               "initial_height": {
                 "type": "number",
                 "description": "Initial Z-coordinate (height) of the object before physics drop"
               }
+            }
+          }
+        },
+        "custom_distractors": {
+          "type": "object",
+          "description": "Configuration for custom 3D model distractors",
+          "properties": {
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Path to directory containing custom distractor models (.obj, .blend)"
+            },
+            "min_count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "max_count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "min_size_rel_scene": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 0.05
+            },
+            "max_size_rel_scene": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 0.1
+            },
+            "min_rotation": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Minimum Euler rotation in degrees [x, y, z]"
+            },
+            "max_rotation": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Maximum Euler rotation in degrees [x, y, z]"
+            },
+            "place_on_ground": {
+              "type": "boolean",
+              "description": "Whether to place custom distractors firmly on the floor",
+              "default": false
+            },
+            "folder_name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Folder name relative to models_path containing custom distractor models"
+            },
+            "min_size": {
+              "type": "number",
+              "description": "Explicit minimum absolute size (overrides rel_scene)",
+              "minimum": 0.0
+            },
+            "max_size": {
+              "type": "number",
+              "description": "Explicit maximum absolute size (overrides rel_scene)",
+              "minimum": 0.0
             }
           }
         }
@@ -327,7 +535,10 @@
     "dataset": {
       "type": "object",
       "description": "Dataset generation and output settings",
-      "required": ["num_scenes", "images_per_scene"],
+      "required": [
+        "num_scenes",
+        "images_per_scene"
+      ],
       "properties": {
         "num_scenes": {
           "type": "integer",
@@ -377,7 +588,10 @@
     "output": {
       "type": "object",
       "description": "Output format and paths",
-      "required": ["save_path", "yolo_format"],
+      "required": [
+        "save_path",
+        "yolo_format"
+      ],
       "properties": {
         "save_path": {
           "type": "string",
@@ -385,7 +599,12 @@
         },
         "yolo_format": {
           "type": "string",
-          "enum": ["yolov11", "yolov26", "yolov11-obb", "yolov26-obb"],
+          "enum": [
+            "yolov11",
+            "yolov26",
+            "yolov11-obb",
+            "yolov26-obb"
+          ],
           "description": "YOLO format: yolov11/yolov26 (standard bbox) or yolov11-obb/yolov26-obb (oriented bbox)"
         },
         "save_depth": {

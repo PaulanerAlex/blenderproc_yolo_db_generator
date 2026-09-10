@@ -71,6 +71,12 @@ class Config:
             'scene': {
                 'room_size_multiplier_min': 5.0,
                 'room_size_multiplier_max': 10.0,
+                'room_min_width': None,
+                'room_max_width': None,
+                'room_min_length': None,
+                'room_max_length': None,
+                'room_min_height': None,
+                'room_max_height': None,
                 'simulate_physics': False,
                 'max_textures': 50,
                 'distractors': {
@@ -78,13 +84,31 @@ class Config:
                     'max_count': 50,
                     'min_size_rel_scene': 0.05,
                     'max_size_rel_scene': 0.1,
-                    'custom_distractors_path': None,
-                    'custom_distractor_prob': 0.5,
+                    'min_size': None,
+                    'max_size': None,
+                    'min_size': None,
+                    'max_size': None,
                     'displacement_max': 0.0,
                     'pbr_noise': 0.5,
                     'emissive_prob': 0.0,
                     'emissive_strength_min': 2.0,
-                    'emissive_strength_max': 5.0
+                    'emissive_strength_max': 10.0,
+                    'min_rotation': [0.0, 0.0, 0.0],
+                    'max_rotation': [360.0, 360.0, 360.0],
+                    'place_on_ground': False
+                },
+                'custom_distractors': {
+                    'folder_name': None,
+                    'path': None,
+                    'min_count': 0,
+                    'max_count': 0,
+                    'min_size_rel_scene': 0.05,
+                    'max_size_rel_scene': 0.1,
+                    'min_size': None,
+                    'max_size': None,
+                    'min_rotation': [0.0, 0.0, 0.0],
+                    'max_rotation': [360.0, 360.0, 360.0],
+                    'place_on_ground': False
                 },
                 'lights': {
                     'min_count': 3,
@@ -102,7 +126,13 @@ class Config:
                     'cam_min_dist_rel': 1.0,
                     'cam_max_dist_rel': 3.0,
                     'cam_min_elev_deg': 0.0,
-                    'cam_max_elev_deg': 90.0
+                    'cam_max_elev_deg': 90.0,
+                    'cam_min_roll_deg': 0.0,
+                    'cam_max_roll_deg': 360.0,
+                    'cam_min_pitch_deg': 0.0,
+                    'cam_max_pitch_deg': 0.0,
+                    'cam_min_yaw_deg': 0.0,
+                    'cam_max_yaw_deg': 0.0
                 }
             },
             'dataset': {
@@ -272,6 +302,13 @@ class ConfigParser:
             if scene.get('room_size_multiplier_min', 0) >= scene.get('room_size_multiplier_max', 1):
                 errors.append("room_size_multiplier_min must be < room_size_multiplier_max")
             
+            for dim in ['width', 'length', 'height']:
+                min_val = scene.get(f'room_min_{dim}')
+                max_val = scene.get(f'room_max_{dim}')
+                if min_val is not None and max_val is not None:
+                    if min_val >= max_val:
+                        errors.append(f"room_min_{dim} must be < room_max_{dim}")
+            
             # Distractors
             if 'distractors' in scene:
                 d = scene['distractors']
@@ -301,6 +338,12 @@ class ConfigParser:
                     errors.append("objects.cam_min_dist_rel must be <= cam_max_dist_rel")
                 if o.get('cam_min_elev_deg', 0.0) > o.get('cam_max_elev_deg', 90.0):
                     errors.append("objects.cam_min_elev_deg must be <= cam_max_elev_deg")
+                if o.get('cam_min_roll_deg', 0.0) > o.get('cam_max_roll_deg', 360.0):
+                    errors.append("objects.cam_min_roll_deg must be <= cam_max_roll_deg")
+                if o.get('cam_min_pitch_deg', 0.0) > o.get('cam_max_pitch_deg', 0.0):
+                    errors.append("objects.cam_min_pitch_deg must be <= cam_max_pitch_deg")
+                if o.get('cam_min_yaw_deg', 0.0) > o.get('cam_max_yaw_deg', 0.0):
+                    errors.append("objects.cam_min_yaw_deg must be <= cam_max_yaw_deg")
         
         # Validate YOLO format
         if 'output' in config:

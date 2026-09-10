@@ -133,7 +133,7 @@ class CameraSampler:
     
     def sample_camera_pose(self, 
                           target_obj: bproc.types.MeshObject,
-                          room_size: float) -> bool:
+                          room_dim: tuple) -> bool:
         """
         Sample a camera pose looking at target object.
         
@@ -170,10 +170,16 @@ class CameraSampler:
         # Sample camera location on sphere around POI
         theta = self.rng.uniform(0, 2 * np.pi)  # Azimuth
         
-        # Get elevation range (0 to 90 degrees by default)
+        # Get elevation range (0 = horizontal, 90 = straight down)
         min_elev = self.config.get('cam_min_elev_deg', 0.0)
         max_elev = self.config.get('cam_max_elev_deg', 90.0)
-        phi = self.rng.uniform(np.deg2rad(min_elev), np.deg2rad(max_elev))  # Elevation
+        
+        # Convert elevation (angle from XY plane) to polar angle phi (angle from Z axis)
+        # 0 elevation -> 90 deg polar, 90 elevation -> 0 deg polar
+        min_phi = 90.0 - max_elev
+        max_phi = 90.0 - min_elev
+        
+        phi = self.rng.uniform(np.deg2rad(min_phi), np.deg2rad(max_phi))  # Polar angle
         
         cam_location = poi + distance * np.array([
             np.sin(phi) * np.cos(theta),
@@ -182,16 +188,50 @@ class CameraSampler:
         ])
         
         # Check if camera is inside room
-        if np.max(np.abs(cam_location[:2])) > room_size/2 * 0.9:
+        width, length, height = room_dim
+        if abs(cam_location[0]) > width/2 * 0.9 or abs(cam_location[1]) > length/2 * 0.9:
             return False
-        if cam_location[2] < 0.1 or cam_location[2] > room_size * 0.9:
+        if cam_location[2] < 0.1 or cam_location[2] > height * 0.9:
             return False
         
-        # Set camera pose
-        rotation_matrix = bproc.camera.rotation_from_forward_vec(
+        # Get local camera pose perturbations
+        min_roll = self.config.get('cam_min_roll_deg', 0.0)
+        max_roll = self.config.get('cam_max_roll_deg', 360.0)
+        roll = self.rng.uniform(np.deg2rad(min_roll), np.deg2rad(max_roll))
+
+        min_pitch = self.config.get('cam_min_pitch_deg', 0.0)
+        max_pitch = self.config.get('cam_max_pitch_deg', 0.0)
+        pitch = self.rng.uniform(np.deg2rad(min_pitch), np.deg2rad(max_pitch))
+
+        min_yaw = self.config.get('cam_min_yaw_deg', 0.0)
+        max_yaw = self.config.get('cam_max_yaw_deg', 0.0)
+        yaw = self.rng.uniform(np.deg2rad(min_yaw), np.deg2rad(max_yaw))
+
+        # Base rotation matrix (looking directly at POI, level with room if roll=0)
+        base_rotation = bproc.camera.rotation_from_forward_vec(
             poi - cam_location,
-            inplane_rot=self.rng.uniform(0, 2*np.pi)
+            inplane_rot=roll
         )
+
+        # Apply local pitch (X axis) and yaw (Y axis) if needed
+        if pitch != 0.0 or yaw != 0.0:
+            cx, sx = np.cos(pitch), np.sin(pitch)
+            Rx = np.array([
+                [1, 0, 0],
+                [0, cx, -sx],
+                [0, sx, cx]
+            ])
+            cy, sy = np.cos(yaw), np.sin(yaw)
+            Ry = np.array([
+                [cy, 0, sy],
+                [0, 1, 0],
+                [-sy, 0, cy]
+            ])
+            # Combined local rotation (yaw then pitch)
+            local_rot = Ry @ Rx
+            rotation_matrix = base_rotation @ local_rot
+        else:
+            rotation_matrix = base_rotation
 
         cam2world_matrix = bproc.math.build_transformation_mat(cam_location, rotation_matrix)
 
@@ -363,7 +403,7 @@ class SceneRandomizer:
                 self.obj_randomizer.randomize_rotation(obj)
     def sample_cameras(self,
                       target_objects: List[bproc.types.MeshObject],
-                      room_size: float,
+                      room_dim: tuple,
                       num_samples: int,
                       max_attempts_per_sample: int = 10) -> int:
         """
@@ -386,7 +426,7 @@ class SceneRandomizer:
             
             # Try to find valid camera pose
             for attempt in range(max_attempts_per_sample):
-                if self.camera_sampler.sample_camera_pose(target, room_size):
+                if self.camera_sampler.sample_camera_pose(target, room_dim):
                     successful += 1
                     break
         

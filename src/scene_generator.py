@@ -53,11 +53,16 @@ class SceneGenerator:
         if config.get('cc_textures_path'):
             self._load_cc_materials(config['cc_textures_path'])
 
-        distractor_config = self.scene_config.get('distractors', {})
-        self.custom_distractor_prob = distractor_config.get('custom_distractor_prob', 0.5)
-        self.custom_distractor_models = self._load_custom_distractor_models(
-            distractor_config.get('custom_distractors_path')
-        )
+        custom_distractor_config = self.scene_config.get('custom_distractors', {})
+        
+        folder_name = custom_distractor_config.get('folder_name')
+        if folder_name:
+            models_path = self.config.get('models_path', '.')
+            custom_path = os.path.join(models_path, folder_name)
+        else:
+            custom_path = custom_distractor_config.get('path')
+            
+        self.custom_distractor_models = self._load_custom_distractor_models(custom_path)
     
     def load_cc_materials(self):
         """Load CC0 texture materials from configured path."""
@@ -208,12 +213,12 @@ class SceneGenerator:
         
         print(f"Successfully loaded {len(self.cc_materials)} CC0 materials")
     
-    def create_room(self, room_size: float) -> List[bproc.types.MeshObject]:
+    def create_room(self, room_dim: Tuple[float, float, float]) -> List[bproc.types.MeshObject]:
         """
         Create a simple cubic room.
         
         Args:
-            room_size: Size of the room (cubic)
+            room_dim: Size of the room (width, length, height)
             
         Returns:
             List of room mesh objects (floor, walls, ceiling)
@@ -221,53 +226,54 @@ class SceneGenerator:
         room_objects = []
         
         # Create floor
-        floor = bproc.object.create_primitive('PLANE', scale=[room_size/2, room_size/2, 1])
+        width, length, height = room_dim
+        floor = bproc.object.create_primitive('PLANE', scale=[width/2, length/2, 1])
         floor.set_name("Floor")
         floor.set_location([0, 0, 0])
         room_objects.append(floor)
         
         # Create walls (4 sides)
-        wall_height = room_size
+        wall_height = height
         wall_thickness = 0.1
         
         # Front wall
         wall_front = bproc.object.create_primitive(
             'CUBE', 
-            scale=[room_size/2, wall_thickness/2, wall_height/2]
+            scale=[width/2, wall_thickness/2, wall_height/2]
         )
-        wall_front.set_location([0, room_size/2, wall_height/2])
+        wall_front.set_location([0, length/2, wall_height/2])
         wall_front.set_name("Wall_Front")
         room_objects.append(wall_front)
         
         # Back wall
         wall_back = bproc.object.create_primitive(
             'CUBE',
-            scale=[room_size/2, wall_thickness/2, wall_height/2]
+            scale=[width/2, wall_thickness/2, wall_height/2]
         )
-        wall_back.set_location([0, -room_size/2, wall_height/2])
+        wall_back.set_location([0, -length/2, wall_height/2])
         wall_back.set_name("Wall_Back")
         room_objects.append(wall_back)
         
         # Left wall
         wall_left = bproc.object.create_primitive(
             'CUBE',
-            scale=[wall_thickness/2, room_size/2, wall_height/2]
+            scale=[wall_thickness/2, length/2, wall_height/2]
         )
-        wall_left.set_location([-room_size/2, 0, wall_height/2])
+        wall_left.set_location([-width/2, 0, wall_height/2])
         wall_left.set_name("Wall_Left")
         room_objects.append(wall_left)
         
         # Right wall
         wall_right = bproc.object.create_primitive(
             'CUBE',
-            scale=[wall_thickness/2, room_size/2, wall_height/2]
+            scale=[wall_thickness/2, length/2, wall_height/2]
         )
-        wall_right.set_location([room_size/2, 0, wall_height/2])
+        wall_right.set_location([width/2, 0, wall_height/2])
         wall_right.set_name("Wall_Right")
         room_objects.append(wall_right)
         
         # Ceiling
-        ceiling = bproc.object.create_primitive('PLANE', scale=[room_size/2, room_size/2, 1])
+        ceiling = bproc.object.create_primitive('PLANE', scale=[width/2, length/2, 1])
         ceiling.set_name("Ceiling")
         ceiling.set_location([0, 0, wall_height])
         ceiling.set_rotation_euler([np.pi, 0, 0])  # Flip upside down
@@ -291,19 +297,20 @@ class SceneGenerator:
         
         return room_objects
     
-    def add_distractors(self, room_size: float, num_distractors: int) -> List[bproc.types.MeshObject]:
+    def add_distractors(self, room_dim: Tuple[float, float, float], num_distractors: int, is_custom: bool = False) -> List[bproc.types.MeshObject]:
         """
         Add distractor objects to the scene.
         
         Args:
-            room_size: Size of the room
+            room_dim: Size of the room
             num_distractors: Number of distractors to add
             
         Returns:
             List of distractor objects
         """
         distractors = []
-        distractor_config = self.scene_config.get('distractors', {})
+        distractor_config = self.scene_config.get('custom_distractors', {}) if is_custom else self.scene_config.get('distractors', {})
+        width, length, height = room_dim
         
         # Use global blacklist
         available_materials = [m for m in self.cc_materials if m.get_name().replace("CC_", "") not in self.texture_blacklist]
@@ -311,11 +318,19 @@ class SceneGenerator:
         shapes = ['CUBE', 'SPHERE', 'CYLINDER', 'MONKEY', 'CONE']
         
         for i in range(num_distractors):
-            use_custom_model = bool(self.custom_distractor_models) and np.random.random() < self.custom_distractor_prob
+            use_custom_model = is_custom and bool(self.custom_distractor_models)
 
-            # Random size (relative to room)
-            min_size = distractor_config.get('min_size_rel_scene', 0.05) * room_size
-            max_size = distractor_config.get('max_size_rel_scene', 0.1) * room_size
+            # Random size
+            avg_room_size = (width + length + height) / 3.0
+            
+            # Use absolute size if provided, otherwise relative to room
+            if distractor_config.get('min_size') is not None and distractor_config.get('max_size') is not None:
+                min_size = distractor_config['min_size']
+                max_size = distractor_config['max_size']
+            else:
+                min_size = distractor_config.get('min_size_rel_scene', 0.05) * avg_room_size
+                max_size = distractor_config.get('max_size_rel_scene', 0.1) * avg_room_size
+                
             size = np.random.uniform(min_size, max_size)
 
             if use_custom_model:
@@ -344,18 +359,35 @@ class SceneGenerator:
                 except Exception:
                     pass
             
-            # Random position within room
-            x = np.random.uniform(-room_size/3, room_size/3)
-            y = np.random.uniform(-room_size/3, room_size/3)
-            z = np.random.uniform(size, room_size - size)
-            distractor.set_location([x, y, z])
-            
             # Random rotation
+            min_rot = distractor_config.get('min_rotation', [0.0, 0.0, 0.0])
+            max_rot = distractor_config.get('max_rotation', [360.0, 360.0, 360.0])
+            
             distractor.set_rotation_euler([
-                np.random.uniform(0, 2*np.pi),
-                np.random.uniform(0, 2*np.pi),
-                np.random.uniform(0, 2*np.pi)
+                np.deg2rad(np.random.uniform(min_rot[0], max_rot[0])),
+                np.deg2rad(np.random.uniform(min_rot[1], max_rot[1])),
+                np.deg2rad(np.random.uniform(min_rot[2], max_rot[2]))
             ])
+            
+            # Random X, Y position
+            x = np.random.uniform(-width/3, width/3)
+            y = np.random.uniform(-length/3, length/3)
+            
+            place_on_ground = distractor_config.get('place_on_ground', False)
+            
+            if place_on_ground:
+                # Set initial location and update scene to compute world bounding box
+                distractor.set_location([x, y, 0])
+                bpy.context.view_layer.update()
+                
+                bbox = distractor.get_bound_box()
+                min_z = min([p[2] for p in bbox])
+                
+                # Shift Z so the lowest point is exactly on the floor (z=0)
+                distractor.set_location([x, y, -min_z])
+            else:
+                z = np.random.uniform(size, height - size)
+                distractor.set_location([x, y, z])
             
             # Assign random material for procedural distractors only.
             # Custom models keep their own materials/textures when present.
@@ -444,12 +476,12 @@ class SceneGenerator:
                 )
                 mat.set_principled_shader_value("Metallic", new_metallic)
     
-    def add_lights(self, room_size: float, num_lights: int):
+    def add_lights(self, room_dim: Tuple[float, float, float], num_lights: int):
         """
         Add lights to the scene.
         
         Args:
-            room_size: Size of the room
+            room_dim: Size of the room
             num_lights: Number of lights to add
         """
         light_config = self.scene_config.get('lights', {})
@@ -458,19 +490,20 @@ class SceneGenerator:
         
         # Blender point light intensity follows inverse square law.
         # To maintain consistent brightness as room size changes,
-        # we scale the energy by room_size squared.
+        width, length, height = room_dim
+        # we scale the energy by avg room_size squared.
         # Reference: config values of 100-300 are assumed to be for ~2.0m room.
         base_room_size = 2.0
-        intensity_scale = (room_size / base_room_size)**2
+        intensity_scale = (((width + length + height)/3.0) / base_room_size)**2
         
         for i in range(num_lights):
             # Random light type
             light_type = np.random.choice(['POINT', 'SPOT'])
             
             # Random position (upper part of room)
-            x = np.random.uniform(-room_size/3, room_size/3)
-            y = np.random.uniform(-room_size/3, room_size/3)
-            z = np.random.uniform(room_size * 0.6, room_size * 0.9)
+            x = np.random.uniform(-width/3, width/3)
+            y = np.random.uniform(-length/3, length/3)
+            z = np.random.uniform(height * 0.6, height * 0.9)
             
             # Create light
             light = bproc.types.Light()
@@ -484,12 +517,12 @@ class SceneGenerator:
             color = np.random.uniform([0.9, 0.9, 0.9], [1.0, 1.0, 1.0])
             light.set_color(color)
     
-    def setup_camera(self, room_size: float = 100.0):
+    def setup_camera(self, room_dim: Tuple[float, float, float] = (100.0, 100.0, 100.0)):
         """
         Setup camera with configured intrinsics.
 
         Args:
-            room_size: Size of the room to adjust clipping planes
+            room_dim: Size of the room to adjust clipping planes
         """
         # Get camera parameters
         px = self.camera_config.get('px', 600)
@@ -522,7 +555,7 @@ class SceneGenerator:
         import bpy
         bpy.context.scene.camera.data.clip_start = 0.01
         # Dynamic clip end based on room size (with safety margin)
-        bpy.context.scene.camera.data.clip_end = max(room_size * 5.0, 5000.0)
+        bpy.context.scene.camera.data.clip_end = max(max(room_dim) * 5.0, 5000.0)
     
     def setup_renderer(self):
         """Configure rendering settings."""
@@ -561,7 +594,7 @@ class SceneGenerator:
         ambient_strength = self.scene_config.get('ambient_strength', 0.5)
         bproc.renderer.set_world_background([0.1, 0.1, 0.1], strength=ambient_strength)
     
-    def render_initial_state_debug(self, scene_idx: int, room_size: float):
+    def render_initial_state_debug(self, scene_idx: int, room_dim: Tuple[float, float, float]):
         """
         Render a debug image of the initial scene state before physics.
         Saves to a 'debug' subdirectory in the output path.
@@ -581,8 +614,9 @@ class SceneGenerator:
 
         # 2. Create a high-angle overview camera pose
         # Positioned outside but looking in through the hidden walls
-        cam_location = [room_size * 0.7, room_size * 0.7, room_size * 0.8]
-        poi = [0, 0, room_size * 0.1]
+        width, length, height = room_dim
+        cam_location = [width * 0.7, length * 0.7, height * 0.8]
+        poi = [0, 0, height * 0.1]
         rotation_matrix = bproc.camera.rotation_from_forward_vec(np.array(poi) - np.array(cam_location))
         cam2world = bproc.math.build_transformation_mat(cam_location, rotation_matrix)
         bproc.camera.add_camera_pose(cam2world)
@@ -590,7 +624,7 @@ class SceneGenerator:
         # 3. Add a temporary light near the camera for the overview
         temp_light = bproc.types.Light()
         temp_light.set_location(cam_location)
-        temp_light.set_energy(500 * (room_size/2.0)**2)
+        temp_light.set_energy(500 * (max(room_dim)/2.0)**2)
         
         # Temporarily reduce samples for speed
         original_samples = bpy.context.scene.cycles.samples
@@ -622,25 +656,39 @@ class SceneGenerator:
             
         print(f"    ✓ Saved dollhouse initial state debug image to {out_file}")
 
-    def compute_room_size(self, object_sizes: List[float]) -> float:
+    def compute_room_size(self, object_sizes: List[float]) -> Tuple[float, float, float]:
         """
-        Compute room size based on largest object.
+        Compute room dimensions (width, length, height).
         
         Args:
             object_sizes: List of object sizes (max dimension)
             
         Returns:
-            Room size
+            Tuple of (width, length, height)
         """
         max_obj_size = max(object_sizes) if object_sizes else 1.0
+        
+        # Check for explicit dimensions
+        min_w = self.scene_config.get('room_min_width')
+        max_w = self.scene_config.get('room_max_width')
+        min_l = self.scene_config.get('room_min_length')
+        max_l = self.scene_config.get('room_max_length')
+        min_h = self.scene_config.get('room_min_height')
+        max_h = self.scene_config.get('room_max_height')
+        
+        if all(x is not None for x in [min_w, max_w, min_l, max_l, min_h, max_h]):
+            width = np.random.uniform(min_w, max_w)
+            length = np.random.uniform(min_l, max_l)
+            height = np.random.uniform(min_h, max_h)
+            return float(width), float(length), float(height)
         
         multiplier_min = self.scene_config.get('room_size_multiplier_min', 5.0)
         multiplier_max = self.scene_config.get('room_size_multiplier_max', 10.0)
         
         multiplier = np.random.uniform(multiplier_min, multiplier_max)
-        room_size = max_obj_size * multiplier
+        room_size = float(max_obj_size * multiplier)
         
-        return room_size
+        return room_size, room_size, room_size
     
     def ensure_uvs(self, obj: bproc.types.MeshObject):
         """
@@ -795,16 +843,16 @@ if __name__ == '__main__':
         generator = SceneGenerator(config)
         print("✓ Scene generator initialized")
         
-        room_size = generator.compute_room_size([1.0])
-        print(f"✓ Room size computed: {room_size:.2f}")
+        room_dim = generator.compute_room_size([1.0])
+        print(f"✓ Room size computed: {room_dim}")
         
-        room_objects = generator.create_room(room_size)
+        room_objects = generator.create_room(room_dim)
         print(f"✓ Room created with {len(room_objects)} objects")
         
-        distractors = generator.add_distractors(room_size, 5)
+        distractors = generator.add_distractors(room_dim, 5)
         print(f"✓ Added {len(distractors)} distractors")
         
-        generator.add_lights(room_size, 3)
+        generator.add_lights(room_dim, 3)
         print("✓ Lights added")
         
         generator.setup_camera()

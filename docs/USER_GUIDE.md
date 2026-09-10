@@ -292,13 +292,21 @@ dataset:
 "scene": {
   "room_size_multiplier_min": 2.0,
   "room_size_multiplier_max": 4.0,
-  "floor_material_prob": 0.8,
+  "room_min_width": 10.0,    // Optional: Explicit min width (X)
+  "room_max_width": 20.0,    // Optional: Explicit max width (X)
+  "room_min_length": 15.0,   // Optional: Explicit min length (Y)
+  "room_max_length": 25.0,   // Optional: Explicit max length (Y)
+  "room_min_height": 5.0,    // Optional: Explicit min height (Z)
+  "room_max_height": 10.0,   // Optional: Explicit max height (Z)
   "use_physics": false,           // Enable physics simulation
   "distractors": {
     "min_count": 5,
     "max_count": 15,
     "min_size_rel_scene": 0.02,
     "max_size_rel_scene": 0.1,
+    "min_rotation": [0.0, 0.0, 0.0],
+    "max_rotation": [360.0, 360.0, 360.0],
+    "place_on_ground": false,
     "emissive_prob": 0.1,
     "emissive_strength_min": 2.0,
     "emissive_strength_max": 5.0
@@ -311,7 +319,12 @@ dataset:
   },
   "objects": {
     "your_object_name": {         // Per-object configuration
-      "randomize_materials": false // Preserve original .obj material
+      "class_id": 0,               // Optional: Training class ID (groups multiple models under same index)
+      "class_name": "gate",        // Optional: Training class name in data.yaml & classes.txt
+      "randomize_materials": false, // Preserve original .obj material
+      "initial_rotation": [0, 0, 0], // Fixed rotation [x, y, z]
+      "min_rotation": [0, -45, -180], // Optional: Random rotation min bounds [x, y, z]
+      "max_rotation": [0, 45, 180]    // Optional: Random rotation max bounds [x, y, z]
     },
     "min_count": 1,               // Min objects per scene
     "max_count": 5,               // Max objects per scene
@@ -322,7 +335,13 @@ dataset:
     "cam_min_dist_rel": 1.0,      // Min camera distance (relative)
     "cam_max_dist_rel": 3.0,      // Max camera distance (relative)
     "cam_min_elev_deg": 0.0,      // Min camera elevation (0 = horizontal)
-    "cam_max_elev_deg": 90.0      // Max camera elevation (90 = straight down)
+    "cam_max_elev_deg": 90.0,     // Max camera elevation (90 = straight down)
+    "cam_min_roll_deg": 0.0,      // Min camera roll (0 = laying flat relative to room)
+    "cam_max_roll_deg": 360.0,    // Max camera roll
+    "cam_min_pitch_deg": 0.0,     // Min camera pitch offset (0 = looking at object)
+    "cam_max_pitch_deg": 0.0,     // Max camera pitch offset
+    "cam_min_yaw_deg": 0.0,       // Min camera yaw offset (0 = looking at object)
+    "cam_max_yaw_deg": 0.0        // Max camera yaw offset
   }
 }
 ```

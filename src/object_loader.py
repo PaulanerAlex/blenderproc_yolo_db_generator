@@ -16,18 +16,22 @@ class ObjectClass:
     """Represents a single object class with its model and metadata."""
     
     def __init__(self, name: str, model_path: str, class_id: int, 
+                 class_name: Optional[str] = None,
                  texture: Optional[str] = None, 
                  textures: Optional[List[str]] = None,
                  randomize_materials: bool = True,
                  initial_rotation: Optional[List[float]] = None,
+                 min_rotation: Optional[List[float]] = None,
+                 max_rotation: Optional[List[float]] = None,
                  initial_height: Optional[float] = None):
         """
         Initialize object class.
         
         Args:
-            name: Class name (directory name)
+            name: Object model name (directory name)
             model_path: Path to .obj file
-            class_id: Numeric class ID (0-indexed for YOLO)
+            class_id: Numeric class ID (0-indexed for YOLO training)
+            class_name: Optional training class name for YOLO (defaults to name)
             texture: Optional single texture
             textures: Optional list of textures
             randomize_materials: Whether to apply random materials
@@ -37,26 +41,38 @@ class ObjectClass:
         self.name = name
         self.model_path = model_path
         self.class_id = class_id
+        self.class_name = class_name if class_name is not None else name
         self.texture = texture
         self.textures = textures
         self.randomize_materials = randomize_materials
         self.initial_rotation = initial_rotation
+        self.min_rotation = min_rotation
+        self.max_rotation = max_rotation
         self.initial_height = initial_height
         self.material_paths = self._find_materials()
     
     def _find_materials(self) -> Dict[str, str]:
         """Find associated material files (.mtl, textures)."""
         materials = {}
-        model_dir = Path(self.model_path).parent
+        model_path = Path(self.model_path)
+        model_dir = model_path.parent
         
-        # Find .mtl file
-        mtl_files = list(model_dir.glob('*.mtl'))
-        if mtl_files:
-            materials['mtl'] = str(mtl_files[0])
+        # Find matching .mtl file with same stem first
+        matching_mtl = model_path.with_suffix('.mtl')
+        if matching_mtl.exists():
+            materials['mtl'] = str(matching_mtl)
+        else:
+            mtl_files = list(model_dir.glob('*.mtl'))
+            if mtl_files:
+                materials['mtl'] = str(mtl_files[0])
         
         # Find texture files
         texture_extensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tga']
         for ext in texture_extensions:
+            matching_tex = model_path.with_suffix(ext)
+            if matching_tex.exists():
+                materials['textures'] = [str(matching_tex)]
+                break
             texture_files = list(model_dir.glob(f'*{ext}'))
             if texture_files:
                 materials['textures'] = [str(f) for f in texture_files]
@@ -65,7 +81,7 @@ class ObjectClass:
         return materials
     
     def __repr__(self) -> str:
-        return f"ObjectClass(name='{self.name}', id={self.class_id}, model='{self.model_path}')"
+        return f"ObjectClass(name='{self.name}', class_name='{self.class_name}', id={self.class_id}, model='{self.model_path}')"
 
 
 class ObjectLoader:
@@ -82,6 +98,7 @@ class ObjectLoader:
         self.models_path = Path(models_path)
         self.object_classes: List[ObjectClass] = []
         self.class_name_to_id: Dict[str, int] = {}
+        self.object_classes_by_name: Dict[str, ObjectClass] = {}
         self.config = config or {}
         
         if not self.models_path.exists():
@@ -101,7 +118,11 @@ class ObjectLoader:
         reserved_keys = [
             'min_count', 'max_count', 'multiple_occurrences', 
             'scale_noise', 'displacement_max', 'pbr_noise',
-            'cam_min_dist_rel', 'cam_max_dist_rel'
+            'cam_min_dist_rel', 'cam_max_dist_rel',
+            'cam_min_elev_deg', 'cam_max_elev_deg',
+            'cam_min_roll_deg', 'cam_max_roll_deg',
+            'cam_min_pitch_deg', 'cam_max_pitch_deg',
+            'cam_min_yaw_deg', 'cam_max_yaw_deg'
         ]
         
         # Get all subdirectories (each represents one class)
@@ -121,7 +142,6 @@ class ObjectLoader:
         # If no specific class folders mentioned in config, fall back to loading all
         if not class_dirs:
             # But only if no class names were provided (to avoid loading everything when one typo exists)
-            # Actually, let's look for keys that aren't reserved.
             has_class_names = any(k not in reserved_keys for k in obj_configs.keys())
             if not has_class_names:
                 class_dirs = all_dirs
@@ -131,56 +151,147 @@ class ObjectLoader:
         if not class_dirs:
             raise ValueError(f"No valid object class directories found in {self.models_path} matching config")
         
-        # Load each class
-        for class_id, class_dir in enumerate(class_dirs):
-            obj_files = list(class_dir.glob('*.obj'))
+        # Collect candidate models and per-object configs
+        raw_items = []
+        for class_dir in class_dirs:
+            obj_files = sorted(class_dir.glob('*.obj'))
             
             if not obj_files:
                 print(f"Warning: No .obj file found in {class_dir.name}, skipping...")
                 continue
             
-            # Use first .obj file found
-            obj_file = obj_files[0]
-            
-            if len(obj_files) > 1:
-                print(f"Warning: Multiple .obj files in {class_dir.name}, using {obj_file.name}")
-            
             # Get class-specific config
             obj_cfg = obj_configs.get(class_dir.name, {})
+            c_id = obj_cfg.get('class_id')
+            c_name = obj_cfg.get('class_name')
+            
+            for obj_file in obj_files:
+                if len(obj_files) == 1:
+                    model_name = class_dir.name
+                else:
+                    model_name = f"{class_dir.name}/{obj_file.stem}"
+                
+                raw_items.append({
+                    'dir': class_dir,
+                    'model_name': model_name,
+                    'obj_file': obj_file,
+                    'obj_cfg': obj_cfg,
+                    'raw_id': c_id,
+                    'raw_name': c_name
+                })
+        
+        # Step 1: Validate and link explicit class_id and class_name
+        explicit_ids = set()
+        for item in raw_items:
+            if item['raw_id'] is not None:
+                if not isinstance(item['raw_id'], int) or item['raw_id'] < 0:
+                    raise ValueError(f"Invalid class_id for {item['dir'].name}: {item['raw_id']}. Must be a non-negative integer.")
+                explicit_ids.add(item['raw_id'])
 
+        # 1a. Propagate class_id for matching class_name
+        name_to_id = {}
+        for item in raw_items:
+            name = item['raw_name']
+            cid = item['raw_id']
+            if name is not None and cid is not None:
+                if name in name_to_id and name_to_id[name] != cid:
+                    raise ValueError(f"Conflicting class_id for class_name '{name}': {name_to_id[name]} vs {cid}")
+                name_to_id[name] = cid
+
+        for item in raw_items:
+            name = item['raw_name']
+            if name is not None and item['raw_id'] is None and name in name_to_id:
+                item['raw_id'] = name_to_id[name]
+
+        # 1b. Propagate class_name for matching class_id
+        id_to_name = {}
+        for item in raw_items:
+            cid = item['raw_id']
+            name = item['raw_name']
+            if cid is not None and name is not None:
+                if cid in id_to_name and id_to_name[cid] != name:
+                    raise ValueError(f"Conflicting class_name for class_id {cid}: '{id_to_name[cid]}' vs '{name}'")
+                id_to_name[cid] = name
+
+        for item in raw_items:
+            cid = item['raw_id']
+            if cid is not None and item['raw_name'] is None:
+                if cid in id_to_name:
+                    item['raw_name'] = id_to_name[cid]
+                else:
+                    id_to_name[cid] = item['dir'].name
+                    item['raw_name'] = item['dir'].name
+
+        # Step 2: Assign sequential IDs to items without explicit IDs
+        next_id = 0
+        def get_next_available_id():
+            nonlocal next_id
+            while next_id in explicit_ids:
+                next_id += 1
+            assigned = next_id
+            explicit_ids.add(assigned)
+            next_id += 1
+            return assigned
+
+        for item in raw_items:
+            if item['raw_name'] is None:
+                item['raw_name'] = item['dir'].name
+
+            if item['raw_id'] is None:
+                if item['raw_name'] in name_to_id:
+                    item['raw_id'] = name_to_id[item['raw_name']]
+                else:
+                    assigned_id = get_next_available_id()
+                    name_to_id[item['raw_name']] = assigned_id
+                    id_to_name[assigned_id] = item['raw_name']
+                    item['raw_id'] = assigned_id
+
+        # Instantiate ObjectClasses
+        for item in raw_items:
+            obj_cfg = item['obj_cfg']
             obj_class = ObjectClass(
-                name=class_dir.name,
-                model_path=str(obj_file),
-                class_id=class_id,
+                name=item['model_name'],
+                model_path=str(item['obj_file']),
+                class_id=item['raw_id'],
+                class_name=item['raw_name'],
                 texture=obj_cfg.get('texture'),
                 textures=obj_cfg.get('textures'),
                 randomize_materials=obj_cfg.get('randomize_materials', True),
                 initial_rotation=obj_cfg.get('initial_rotation'),
+                min_rotation=obj_cfg.get('min_rotation'),
+                max_rotation=obj_cfg.get('max_rotation'),
                 initial_height=obj_cfg.get('initial_height')
             )
             
             self.object_classes.append(obj_class)
-            self.class_name_to_id[class_dir.name] = class_id
+            self.class_name_to_id[item['model_name']] = item['raw_id']
+            self.class_name_to_id[item['dir'].name] = item['raw_id']
+            self.object_classes_by_name[item['model_name']] = obj_class
+            if item['dir'].name not in self.object_classes_by_name:
+                self.object_classes_by_name[item['dir'].name] = obj_class
         
         if not self.object_classes:
             raise ValueError(f"No valid object classes loaded from {self.models_path}")
         
-        print(f"Loaded {len(self.object_classes)} object classes:")
+        unique_classes = len(self.create_class_mapping_dict())
+        print(f"Loaded {len(self.object_classes)} object model(s) across {unique_classes} YOLO class(es):")
         for obj_class in self.object_classes:
-            print(f"  - {obj_class.name} (ID: {obj_class.class_id})")
+            print(f"  - Model '{obj_class.name}' -> YOLO Class '{obj_class.class_name}' (ID: {obj_class.class_id})")
     
     def get_class_by_name(self, name: str) -> Optional[ObjectClass]:
-        """Get object class by name."""
-        class_id = self.class_name_to_id.get(name)
-        if class_id is not None:
-            return self.object_classes[class_id]
-        return None
+        """Get object class by model name."""
+        return self.object_classes_by_name.get(name)
     
     def get_class_by_id(self, class_id: int) -> Optional[ObjectClass]:
-        """Get object class by ID."""
-        if 0 <= class_id < len(self.object_classes):
-            return self.object_classes[class_id]
+        """Get object class by ID (returns first model matching this class ID)."""
+        for obj_class in self.object_classes:
+            if obj_class.class_id == class_id:
+                return obj_class
         return None
+
+    def get_classes_by_id(self, class_id: int) -> List[ObjectClass]:
+        """Get all object classes sharing this class ID."""
+        return [obj_class for obj_class in self.object_classes if obj_class.class_id == class_id]
     
     def get_random_classes(self, n: int, allow_duplicates: bool = True, 
                           rng: Optional[np.random.Generator] = None) -> List[ObjectClass]:
@@ -214,7 +325,15 @@ class ObjectLoader:
         return self.object_classes.copy()
     
     def get_class_names(self) -> List[str]:
-        """Get list of all class names (sorted by ID)."""
+        """Get list of unique YOLO class names sorted by class ID."""
+        mapping = self.create_class_mapping_dict()
+        if not mapping:
+            return []
+        max_id = max(mapping.keys())
+        return [mapping.get(i, f"class_{i}") for i in range(max_id + 1)]
+    
+    def get_model_names(self) -> List[str]:
+        """Get list of all model directory names."""
         return [obj_class.name for obj_class in self.object_classes]
     
     def get_num_classes(self) -> int:
@@ -246,18 +365,21 @@ class ObjectLoader:
     
     def create_yolo_classes_file(self, output_path: str):
         """
-        Create classes.txt file for YOLO (class names in order).
+        Create classes.txt file for YOLO (unique class names in class_id order).
         
         Args:
             output_path: Path to save classes.txt
         """
         with open(output_path, 'w') as f:
-            for obj_class in self.object_classes:
-                f.write(f"{obj_class.name}\n")
+            for name in self.get_class_names():
+                f.write(f"{name}\n")
     
     def create_class_mapping_dict(self) -> Dict[int, str]:
-        """Create mapping from class ID to class name."""
-        return {obj_class.class_id: obj_class.name for obj_class in self.object_classes}
+        """Create mapping from class ID to YOLO class name."""
+        mapping = {}
+        for obj_class in self.object_classes:
+            mapping[obj_class.class_id] = obj_class.class_name
+        return dict(sorted(mapping.items()))
 
 
 def test_object_loader(models_path: str):

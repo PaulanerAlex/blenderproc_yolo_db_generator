@@ -162,7 +162,8 @@ class DatasetGenerator:
             
             # Apply metadata using direct blender_obj access for persistence
             obj.blender_obj["category_id"] = obj_class.class_id
-            obj.blender_obj["class_name"] = obj_class.name
+            obj.blender_obj["class_name"] = obj_class.class_name
+            obj.blender_obj["model_name"] = obj_class.name
             
             # Set UNIQUE pass_index for segmentation (BlenderProc uses this)
             # Must be > 0 (0 is background)
@@ -188,6 +189,11 @@ class DatasetGenerator:
             if hasattr(obj_class, 'initial_rotation') and obj_class.initial_rotation:
                 # Convert degrees to radians for Blender
                 initial_rot = [np.deg2rad(x) for x in obj_class.initial_rotation]
+            elif hasattr(obj_class, 'min_rotation') and obj_class.min_rotation and hasattr(obj_class, 'max_rotation') and obj_class.max_rotation:
+                initial_rot = [
+                    np.deg2rad(np.random.uniform(obj_class.min_rotation[i], obj_class.max_rotation[i]))
+                    for i in range(3)
+                ]
 
             cc_mat = self.scene_generator.cc_materials_dict.get(texture_name) if texture_name else None
             
@@ -211,16 +217,17 @@ class DatasetGenerator:
 
         
         # Compute room size based on actual objects
-        room_size = self.scene_generator.compute_room_size(obj_sizes)
+        room_dim = self.scene_generator.compute_room_size(obj_sizes)
         
         # Create room
-        room_objects = self.scene_generator.create_room(room_size)
+        room_objects = self.scene_generator.create_room(room_dim)
         
         # Place objects in room
         for i, obj in enumerate(target_objects):
             # Random position in room
-            x = np.random.uniform(-room_size/4, room_size/4)
-            y = np.random.uniform(-room_size/4, room_size/4)
+            width, length, height = room_dim
+            x = np.random.uniform(-width/4, width/4)
+            y = np.random.uniform(-length/4, length/4)
 
             # Check for initial height in class config
             obj_class = object_classes[i]
@@ -228,17 +235,29 @@ class DatasetGenerator:
                 z = obj_class.initial_height
             else:
                 # Ensure it's above the floor
-                z = np.random.uniform(obj_sizes[i]/2 + 0.1, room_size/2)
+                z = np.random.uniform(obj_sizes[i]/2 + 0.1, height/2)
 
             obj.set_location([x, y, z])
 
-        # Add distractors
+        # Add primitive distractors
         distractor_config = self.config.get('scene', {}).get('distractors', {})
         num_distractors = np.random.randint(
             distractor_config.get('min_count', 20),
             distractor_config.get('max_count', 50) + 1
-        )
-        self.scene_generator.add_distractors(room_size, num_distractors)
+        ) if distractor_config.get('max_count', 50) > 0 else 0
+        
+        if num_distractors > 0:
+            self.scene_generator.add_distractors(room_dim, num_distractors, is_custom=False)
+            
+        # Add custom distractors
+        custom_distractor_config = self.config.get('scene', {}).get('custom_distractors', {})
+        num_custom_distractors = np.random.randint(
+            custom_distractor_config.get('min_count', 0),
+            custom_distractor_config.get('max_count', 0) + 1
+        ) if custom_distractor_config.get('max_count', 0) > 0 else 0
+        
+        if num_custom_distractors > 0:
+            self.scene_generator.add_distractors(room_dim, num_custom_distractors, is_custom=True)
         
         # Add lights
         light_config = self.config.get('scene', {}).get('lights', {})
@@ -246,14 +265,14 @@ class DatasetGenerator:
             light_config.get('min_count', 3),
             light_config.get('max_count', 6) + 1
         )
-        self.scene_generator.add_lights(room_size, num_lights)
+        self.scene_generator.add_lights(room_dim, num_lights)
         
         # Setup camera
-        self.scene_generator.setup_camera(room_size)
+        self.scene_generator.setup_camera(room_dim)
         
         # Render initial state debug image if requested
         if self.config.get('scene', {}).get('debug_initial_state', False):
-            self.scene_generator.render_initial_state_debug(scene_idx, room_size)
+            self.scene_generator.render_initial_state_debug(scene_idx, room_dim)
         
         # Apply physics if enabled (move physics after cam setup for clarity, but doesn't change much)
         self.randomizer.apply_physics()
@@ -287,7 +306,7 @@ class DatasetGenerator:
 
         num_poses = self.randomizer.sample_cameras(
             target_objects,
-            room_size,
+            room_dim,
             num_images
         )
 

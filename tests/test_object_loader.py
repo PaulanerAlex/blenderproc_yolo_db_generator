@@ -139,7 +139,7 @@ class TestObjectLoader:
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
         
-        with pytest.raises(ValueError, match="No object class directories found"):
+        with pytest.raises(ValueError, match="No valid object class directories found"):
             ObjectLoader(str(empty_dir))
     
     def test_missing_obj_files(self, tmp_path):
@@ -169,6 +169,116 @@ class TestObjectLoader:
         obj_class = loader.get_class_by_name('cube')
         assert 'mtl' in obj_class.material_paths
         assert obj_class.material_paths['mtl'].endswith('.mtl')
+
+    def test_shared_class_name(self, mock_models_dir):
+        """Test grouping multiple models under the same class_name."""
+        config = {
+            'scene': {
+                'objects': {
+                    'cube': {'class_name': 'polyhedron'},
+                    'cylinder': {'class_name': 'curved'},
+                    'sphere': {'class_name': 'curved'}
+                }
+            }
+        }
+        loader = ObjectLoader(str(mock_models_dir), config)
+        
+        # Should have 3 models loaded
+        assert loader.get_num_classes() == 3
+        
+        # But only 2 unique YOLO classes: 'polyhedron' and 'curved'
+        mapping = loader.create_class_mapping_dict()
+        assert len(mapping) == 2
+        assert loader.get_class_names() == ['polyhedron', 'curved']
+        
+        cube = loader.get_class_by_name('cube')
+        cylinder = loader.get_class_by_name('cylinder')
+        sphere = loader.get_class_by_name('sphere')
+        
+        assert cube.class_id == 0
+        assert cube.class_name == 'polyhedron'
+        assert cylinder.class_id == 1
+        assert cylinder.class_name == 'curved'
+        assert sphere.class_id == 1
+        assert sphere.class_name == 'curved'
+
+    def test_shared_explicit_class_id(self, mock_models_dir, tmp_path):
+        """Test grouping multiple models under explicit class_id."""
+        config = {
+            'scene': {
+                'objects': {
+                    'cube': {'class_id': 0, 'class_name': 'box'},
+                    'cylinder': {'class_id': 0},  # inherits 'box'
+                    'sphere': {'class_id': 1, 'class_name': 'ball'}
+                }
+            }
+        }
+        loader = ObjectLoader(str(mock_models_dir), config)
+        
+        mapping = loader.create_class_mapping_dict()
+        assert mapping == {0: 'box', 1: 'ball'}
+        assert loader.get_class_names() == ['box', 'ball']
+        
+        # Verify classes.txt
+        classes_file = tmp_path / "classes.txt"
+        loader.create_yolo_classes_file(str(classes_file))
+        with open(classes_file, 'r') as f:
+            lines = f.read().strip().split('\n')
+        assert lines == ['box', 'ball']
+
+    def test_conflicting_class_mapping(self, mock_models_dir):
+        """Test error when conflicting class IDs are configured for the same class name."""
+        config = {
+            'scene': {
+                'objects': {
+                    'cube': {'class_name': 'same_name', 'class_id': 0},
+                    'cylinder': {'class_name': 'same_name', 'class_id': 1}
+                }
+            }
+        }
+        with pytest.raises(ValueError, match="Conflicting class_id"):
+            ObjectLoader(str(mock_models_dir), config)
+
+    def test_multiple_obj_files_in_folder(self, tmp_path):
+        """Test loading multiple OBJ variations from a single directory."""
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        
+        # Directory with 3 variations
+        gates_dir = models_dir / "blue_gates_with_variations"
+        gates_dir.mkdir()
+        for size in ['400x400x30', '500x600x30', '600x500x45']:
+            with open(gates_dir / f"gate_{size}.obj", 'w') as f:
+                f.write("v 0 0 0\n")
+            with open(gates_dir / f"gate_{size}.mtl", 'w') as f:
+                f.write(f"# MTL for {size}\n")
+        
+        config = {
+            'scene': {
+                'objects': {
+                    'blue_gates_with_variations': {
+                        'class_id': 0,
+                        'class_name': 'blue_gate'
+                    }
+                }
+            }
+        }
+        loader = ObjectLoader(str(models_dir), config)
+        
+        # 3 variations loaded
+        assert loader.get_num_classes() == 3
+        
+        # All 3 variations belong to YOLO class 0 ('blue_gate')
+        mapping = loader.create_class_mapping_dict()
+        assert mapping == {0: 'blue_gate'}
+        assert loader.get_class_names() == ['blue_gate']
+        
+        # Names are namespaced by folder
+        for obj in loader.object_classes:
+            assert obj.class_id == 0
+            assert obj.class_name == 'blue_gate'
+            assert obj.name.startswith('blue_gates_with_variations/')
+            assert obj.material_paths['mtl'].endswith('.mtl')
 
 
 if __name__ == '__main__':

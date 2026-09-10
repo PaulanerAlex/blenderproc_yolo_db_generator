@@ -1,0 +1,121 @@
+{
+  "seed": {
+    "numpy": 42,
+    "blenderproc": "446"
+  },
+  "models_path": "./models",
+  "cc_textures_path": "/home/paul/akamav/dev/projects/blenderproc/cc0_textures",
+  "camera": {
+    "px": 600,
+    "py": 600,
+    "u0": 320,
+    "v0": 240,
+    "width": 640,
+    "height": 480,
+    "randomize_params_percent": 5.0
+  },
+  "rendering": {
+    "max_samples": 64,
+    "denoiser": "OPTIX"
+  },
+  "scene": {
+    "room_min_width": 20.0,
+    "room_max_width": 30.0,
+    "room_min_length": 20.0,
+    "room_max_length": 40.0,
+    "room_min_height": 5.0,
+    "room_max_height": 8.0,
+    "simulate_physics": false,
+    "max_textures": 50,
+    "distractors": {
+      "min_count": 25,
+      "max_count": 30,
+      "min_size_rel_scene": 0.005,
+      "max_size_rel_scene": 0.035,
+      "custom_distractors_path": null,
+      "custom_distractor_prob": 0.5,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.5,
+      "emissive_prob": 0.1,
+      "emissive_strength_min": 2.0,
+      "emissive_strength_max": 5.0,
+      "texture_blacklist": []
+    },
+    "custom_distractors": {
+      "folder_name": "bar_distractors",
+      "min_count": 5,
+      "max_count": 7,
+      "min_size": 4.5,
+      "max_size": 4.5,
+      "min_rotation": [90.0, 0.0, 0.0],
+      "max_rotation": [90.0, 0.0, 360.0],
+      "place_on_ground": true
+    },
+    "lights": {
+      "min_count": 4,
+      "max_count": 8,
+      "min_intensity": 100,
+      "max_intensity": 300
+    },
+    "objects": {
+      "red_gates_with_variations": {
+        "class_id": 0,
+        "class_name": "red_gate",
+        "randomize_materials": false,
+        "min_rotation": [-90.0, 0.0, -70.0],
+        "max_rotation": [-90.0, 0.0, 70.0]
+      },
+      "green_gates_with_variations": {
+        "class_id": 1,
+        "class_name": "green_gate",
+        "randomize_materials": false,
+        "min_rotation": [-90.0, 90.0, -70.0],
+        "max_rotation": [-90.0, 90.0, 70.0]
+      },
+      "blue_gates_with_variations": {
+        "class_id": 2,
+        "class_name": "blue_gate",
+        "randomize_materials": false,
+        "min_rotation": [-90.0, 90.0, -70.0],
+        "max_rotation": [-90.0, 90.0, 70.0]
+      },
+      "min_count": 1,
+      "max_count": 2,
+      "multiple_occurrences": true,
+      "scale_noise": 0.15,
+      "displacement_max": 0.0,
+      "pbr_noise": 0.3,
+      "cam_min_dist_rel": 2.5,
+      "cam_max_dist_rel": 4.5,
+      "cam_min_elev_deg": -5.0,
+      "cam_max_elev_deg": 15.0,
+      "cam_min_roll_deg": 0.0,
+      "cam_max_roll_deg": 0.0,
+      "cam_min_pitch_deg": -10.0,
+      "cam_max_pitch_deg": 10.0
+    }
+  },
+  "dataset": {
+    "num_scenes": 1500,
+    "scenes_per_run": 1,
+    "images_per_scene": 5,
+    "empty_images_per_scene": 3,
+    "train_split": 0.7,
+    "val_split": 0.2,
+    "test_split": 0.1
+  },
+  "output": {
+    "save_path": "./output/monochrome_gates_v2_sim_yolo26_m",
+    "yolo_format": "yolov11",
+    "save_depth": false,
+    "save_normals": false,
+    "save_segmentation": false,
+    "save_pose": true,
+    "detection_params": {
+      "min_bbox_side_px": 15,
+      "min_visibility": 0.8,
+      "force_fully_visible": false,
+      "occlusion_samples": 150
+    }
+  }
+}
